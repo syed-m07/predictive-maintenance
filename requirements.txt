@@ -1,0 +1,14 @@
+torch
+xgboost
+optuna
+mlflow
+fastapi
+uvicorn
+shap
+scikit-learn
+pandas
+numpy
+matplotlib
+seaborn
+scipy
+pytest

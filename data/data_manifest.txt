@@ -1,0 +1,152 @@
+================================================================================
+C-MAPSS Turbofan Engine Degradation Dataset
+================================================================================
+
+DATASET NAME:
+  NASA Commercial Modular Aero-Propulsion System Simulation (C-MAPSS)
+  Turbofan Engine Degradation Simulation Data Set
+
+DESCRIPTION:
+  Simulated turbofan engine run-to-failure data. Each engine starts in a
+  healthy state and degrades over time until failure. Sensor readings and
+  operating conditions are recorded at each cycle of engine operation.
+  This dataset is the de-facto benchmark for Remaining Useful Life (RUL)
+  prediction research in predictive maintenance.
+
+SOURCE:
+  Original NASA CMAPSS Repository:
+    https://www.nasa.gov/dspace/ames/114700
+  
+  Alternative access (easier):
+    https://github.com/InfiniteLife/CMAPSS_Dataset
+    or search "NASA C-MAPSS dataset" on Kaggle
+
+REFERENCE PAPER:
+  Saxena, A., Goebel, K., Simon, D., & Eddington, N. (2008).
+  "Damage propagation modeling for aircraft engine run-to-failure simulation."
+  In 2008 International Conference on Prognostics and Health Management.
+  DOI: 10.1109/PHM.2008.4711414
+
+================================================================================
+DATASET SUBSETS
+================================================================================
+
+Four separate training/test scenarios (FD001, FD002, FD003, FD004):
+
+FD001 (SIMPLEST):
+  - Operating conditions: 1 (single stable condition)
+  - Fault modes: 1 (single degradation pattern)
+  - Engines: 100 train, 100 test
+  - File: train_FD001.txt, test_FD001.txt
+  - Use this first — it's the baseline everyone compares against
+
+FD002 (MODERATE):
+  - Operating conditions: 6 (engines run at different settings)
+  - Fault modes: 1
+  - Engines: 260 train, 100 test
+  - File: train_FD002.txt, test_FD002.txt
+  - More realistic because engines operate in varied conditions
+
+FD003 (HARDER):
+  - Operating conditions: 1
+  - Fault modes: 2 (two possible degradation patterns)
+  - Engines: 100 train, 100 test
+  - File: train_FD003.txt, test_FD003.txt
+  - Tests whether model generalizes to unseen failure modes
+
+FD004 (HARDEST):
+  - Operating conditions: 6
+  - Fault modes: 2
+  - Engines: 248 train, 100 test
+  - File: train_FD004.txt, test_FD004.txt
+  - Real-world scenario: variable conditions + multiple failure patterns
+
+PROJECT FOCUS:
+  This project starts with FD001 (establish baseline).
+  Later weeks may include FD002 for generalization testing.
+  N-CMAPSS (newer variant) is mentioned as optional stretch goal.
+
+================================================================================
+COLUMN STRUCTURE
+================================================================================
+
+Each line in train_FD00X.txt and test_FD00X.txt is space-separated (no header):
+
+Column 1:  unit_id (engine ID, 1–100 or 1–248)
+Column 2:  cycle (operational cycle number, starts at 1)
+Column 3:  op_setting_1 (operating condition parameter 1)
+Column 4:  op_setting_2 (operating condition parameter 2)
+Column 5:  op_setting_3 (operating condition parameter 3)
+Columns 6-26: sensor_1 through sensor_21 (21 sensor readings)
+
+Total: 26 columns
+Format: space-separated, float values (integers for unit_id and cycle)
+
+EXAMPLE LINE:
+  1 1 -0.0007 -0.0004 100.0 449.51 555.26 1589.70 1400.60 ...
+
+WHAT EACH COLUMN MEANS:
+  - unit_id: which engine (1 = first engine in training set)
+  - cycle: how many hours/cycles of operation
+  - op settings: throttle %, altitude, temperature (examples; varies by simulator)
+  - sensors: fan speed, fuel pressure, turbine temp, vibration, etc. (varies)
+
+KEY INSIGHT:
+  The 21 sensors measure physical degradation over the engine's lifetime.
+  Some sensors are noisy/constant and should be dropped.
+  Others drift toward failure and are highly predictive of RUL.
+  Part of feature engineering is identifying which.
+
+================================================================================
+DOWNLOAD INSTRUCTIONS
+================================================================================
+
+QUICK START (Recommended):
+
+1. Visit: https://github.com/InfiniteLife/CMAPSS_Dataset
+   (or Kaggle: search "CMAPSS dataset")
+
+2. Download all files:
+   - train_FD001.txt
+   - test_FD001.txt
+   - train_FD002.txt
+   - test_FD002.txt
+   - train_FD003.txt
+   - test_FD003.txt
+   - train_FD004.txt
+   - test_FD004.txt
+
+3. Place them in your repo's data/raw/ directory:
+   predictive-maintenance/
+   └── data/
+       └── raw/
+           ├── train_FD001.txt
+           ├── test_FD001.txt
+           ├── train_FD002.txt
+           ├── test_FD002.txt
+           ├── ... (and so on)
+
+4. Verify: ls -lh data/raw/
+   Each file should be ~2-4 MB. Total ~50 MB for all 4 subsets.
+
+5. Test the loader:
+   python -c "from src.data_loader import load_cmapss; df = load_cmapss('FD001', 'train'); print(df.shape)"
+   Should print: (17731, 26)
+
+DIRECT FROM NASA:
+  Source: https://www.nasa.gov/dspace/ames/114700
+  Select "CMAPSS Dataset" → follow their download links
+  Less convenient but original source.
+
+================================================================================
+NOTES
+================================================================================
+
+- data/raw/ is .gitignored (files too large for Git)
+- This file (data_manifest.txt) documents the process so anyone can
+  reproduce your setup without version-controlling the raw data
+- After downloading, run your data_loader.py to verify format
+- If files don't parse, check for different delimiters (some sources
+  use comma or tab instead of space)
+
+================================================================================
