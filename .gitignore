@@ -1,1 +1,11 @@
 .commandcode
+data/raw/
+data/processed/
+trained_models/*.pkl
+trained_models/*.pt
+mlruns/
+ipynb_checkpoints/
+__pycache__/
+*pyc 
+.env
+venv/
