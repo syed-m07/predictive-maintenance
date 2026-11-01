@@ -24,6 +24,7 @@ from src.feature_engineering import (build_tabular_features, last_row_per_engine
 from src.models.xgboost_rul import EARLY_STOPPING_ROUNDS, XGBoostRUL
 from src.plotting import (apply_style, plot_feature_importance, plot_life_trajectories,
                           plot_test_predictions)
+from src.registry import git_commit
 from src.run_utils import finish_run
 from src.tracking import setup_mlflow
 
@@ -43,6 +44,7 @@ def build_xgb_inputs(subset: str = SUBSET):
 
 def run(subset: str = SUBSET, params: dict | None = None, model_name: str = "xgboost_baseline",
         notes: str = "") -> dict:
+    commit = git_commit()          # the code version that actually runs (recorded in the registry)
     seed_everything(SEED)
     apply_style()
     d, f_train, f_val, f_test, names = build_xgb_inputs(subset)
@@ -73,7 +75,7 @@ def run(subset: str = SUBSET, params: dict | None = None, model_name: str = "xgb
             model=model, model_name=model_name, subset=subset, scaler=d.scaler,
             data_split={"train_units": d.train_units, "val_units": d.val_units},
             val_metrics=val_metrics, test_truth=d.test_truth, test_pred=test_pred,
-            timing=timing, train_time_s=train_time, figures=figures, notes=notes)
+            timing=timing, train_time_s=train_time, figures=figures, notes=notes, commit=commit)
 
     tm = row["test_metrics"]
     print(f"\n{model_name} v{row['version']}  ({subset})  best_iteration={model.best_iteration}")

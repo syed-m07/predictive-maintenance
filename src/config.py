@@ -22,8 +22,10 @@ os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_RAW_DIR = ROOT_DIR / "data" / "raw"
 DATA_PROCESSED_DIR = ROOT_DIR / "data" / "processed"
-MODELS_DIR = ROOT_DIR / "trained_models"
-RESULTS_DIR = ROOT_DIR / "results"
+# PM_MODELS_DIR / PM_RESULTS_DIR redirect outputs (smoke tests write to a scratch folder instead
+# of the real registry and results/).
+MODELS_DIR = Path(os.environ.get("PM_MODELS_DIR", ROOT_DIR / "trained_models"))
+RESULTS_DIR = Path(os.environ.get("PM_RESULTS_DIR", ROOT_DIR / "results"))
 CONFIGS_DIR = ROOT_DIR / "configs"
 REGISTRY_PATH = MODELS_DIR / "model_registry.csv"
 

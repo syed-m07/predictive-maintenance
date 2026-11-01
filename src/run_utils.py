@@ -21,13 +21,16 @@ from src.registry import append_entry, git_commit, next_version
 def finish_run(*, model: RULModel, model_name: str, subset: str, scaler, data_split: dict,
                val_metrics: dict, test_truth, test_pred, timing: dict, train_time_s: float,
                figures: dict[str, plt.Figure] | None = None, notes: str = "",
-               extra_metadata: dict | None = None) -> dict:
-    """Must be called inside an active `mlflow.start_run()`. Returns the registry row."""
+               extra_metadata: dict | None = None, commit: str | None = None) -> dict:
+    """Must be called inside an active `mlflow.start_run()`. Returns the registry row.
+
+    `commit` should be captured with git_commit() when the run STARTS (the code that actually
+    ran); if omitted it is read now, at the end of the run."""
     run = mlflow.active_run()
     if run is None:
         raise RuntimeError("finish_run must be called inside mlflow.start_run()")
     test_metrics = evaluate_test(test_truth, test_pred, MAX_RUL)
-    commit = git_commit()
+    commit = commit or git_commit()
     version = next_version(model_name)
     bundle = MODELS_DIR / f"{model_name}_v{version}"
 
