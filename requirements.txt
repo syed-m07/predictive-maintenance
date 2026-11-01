@@ -42,3 +42,5 @@ kagglehub==1.0.3
 pytest==9.2.0
 httpx==0.28.1          # needed by fastapi.testclient
 ipykernel==7.4.0       # lets VS Code / Jupyter use this venv as a kernel
+nbconvert==7.17.2      # re-executes notebooks top-to-bottom from the CLI (reproducibility check)
+nbformat==5.11.1       # builds/reads .ipynb files programmatically
