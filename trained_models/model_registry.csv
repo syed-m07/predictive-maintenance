@@ -1,1 +1,1 @@
-model_name,version,subset,path,val_rmse,test_rmse,test_mae,nasa_score,latency_ms,train_time_s,created_at,notes
+model_name,version,subset,path,val_rmse,test_rmse,test_mae,test_r2,nasa_score,test_rmse_clip125,nasa_score_clip125,latency_single_ms,throughput_ms_per_item,train_time_s,mlflow_run_id,git_commit,created_at,notes
