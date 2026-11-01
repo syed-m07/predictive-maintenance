@@ -62,6 +62,17 @@ Sources of truth, in order: this file → [`HANDOFF.md`](HANDOFF.md) → [`pm_pl
 | F7 | **Leakage tests were mutation-checked:** the code was deliberately broken three ways (centred rolling window, scaler fit on train+val, row-level split) and the suite had to fail each time. The first run exposed a gap: the scaler-on-train+val mutation passed. A pipeline-level test was added; all three are now caught. | A test that has never failed proves nothing. |
 | F8 | **Finding: rolling-std features are the weakest family** (best \|ρ\| 0.47 vs raw 0.72, rolling mean / EMA 0.76). The original plan expected rolling std to rise toward failure. In FD001 the sensor *level* drifts, but its noise does not grow. The features are **kept** (no evidence-free pruning); SHAP will show whether XGBoost uses them. | Reported honestly in `02_Feature_Engineering.ipynb` instead of repeating the planner's expectation. |
 
+## 3c. Evaluation decisions (Block 4)
+
+| # | Decision | Why |
+|---|---|---|
+| V1 | **One scorer, `src/evaluation.py`, for every model.** Tested against hand-computed values and mutation-checked (swapped late/early penalties, flipped error sign, removed clipping: each one breaks tests). | The comparison table is only fair if every model is graded by identical, verified code. |
+| V2 | Predictions are **clipped to [0, 125]** before scoring. | RUL can't be negative; models are trained on labels ≤ 125, so 125 is the largest meaningful output. |
+| V3 | NASA score = **sum** over engines (literature convention). It's compared only within the same test set. | It grows with the number of engines, so FD001 (100) and FD002 (259) sums aren't comparable. |
+| V4 | Speed measured **two ways, on CPU, median of 50 runs after 5 warm-ups:** `latency_single_ms` (one engine, what an API caller waits) and `throughput_ms_per_item` (whole batch). Colab GPU timings are never used in the table. | Deep models are often slow per request but fast in batches; one number would hide that. The same hardware for all models keeps it fair. |
+| V5 | Validation metrics (every window of the 20 held-out engines, clipped labels) drive early stopping and Optuna. **Test metrics are computed once per final model, never used for tuning.** | Tuning on test would leak test information into model selection. The two aren't directly comparable: validation covers whole lifetimes, test one truncated point per engine. |
+| V6 | **Reference rows** on the FD001 test set (verified with the scorer): predict the training mean → RMSE 43.0, NASA 32,772; always predict 125 → RMSE 64.6, NASA 1,502,475; **perfect-but-capped-at-125 oracle → RMSE 3.74, NASA 14.6**. The mean predictor appears as a "no-skill" row in the comparison table. | Gives a "no skill" floor that real models must beat. It also **quantifies D9:** under the unclipped-truth convention, RMSE ≈ 3.7 is the best any clipped-label model can achieve. |
+
 ## 4. Corrections to the original plan (not shortcuts: the original was wrong)
 
 Full list in HANDOFF.md §7; all applied to planner v4.
