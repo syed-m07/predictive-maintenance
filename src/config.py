@@ -45,9 +45,9 @@ SENSOR_COLS_ALL = [f"s{i}" for i in range(1, 22)]                 # 21 sensors
 COLUMNS = ["unit_id", "cycle"] + OP_COLS + SENSOR_COLS_ALL        # 26 columns in every file
 RAW_FEATURE_COLS = OP_COLS + SENSOR_COLS_ALL                      # 24 values per cycle (API input)
 
-# Planned drop list for FD001 (near-constant columns). To be CONFIRMED by the variance
-# analysis in the EDA step (Block 2); if EDA disagrees, this list is updated and the
-# change is documented in docs/DECISIONS.md.
+# FD001 drop list - CONFIRMED by EDA (notebooks/01_EDA.ipynb, docs/DECISIONS.md D6):
+# 7 constant (op3 s1 s5 s10 s16 s18 s19), 1 near-constant (s6), 2 trendless noise (op1 op2).
+# tests/test_eda.py fails if the data-driven rule in src/eda.py ever disagrees with it.
 DROP_COLS = ["op1", "op2", "op3", "s1", "s5", "s6", "s10", "s16", "s18", "s19"]
 SENSORS = [c for c in SENSOR_COLS_ALL if c not in DROP_COLS]      # 14 informative sensors
 
