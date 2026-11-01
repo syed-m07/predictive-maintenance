@@ -1,0 +1,13 @@
+# Slim dependencies for the Docker API image only (python:3.12-slim).
+# No torch / mlflow / optuna / shap: the served model is XGBoost.
+# If a deep model is served instead, add: torch==2.15.0 (CPU index).
+numpy==2.5.4
+pandas==3.0.6
+scikit-learn==1.9.1
+xgboost==3.4.1
+joblib==1.6.0
+pyyaml==6.0.3
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.2
+prometheus-client==0.26.0

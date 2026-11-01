@@ -1,14 +1,44 @@
-torch
-xgboost
-optuna
-mlflow
-fastapi
-uvicorn
-shap
-scikit-learn
-pandas
-numpy
-matplotlib
-seaborn
-scipy
-pytest
+# Full dev / training environment.
+# REQUIRES Python 3.12  (optuna + mlflow do not install on Python 3.15 yet).
+# Versions verified to resolve together on Python 3.12.10 (pip dry-run, 2026-11-01).
+#
+# Install:  python -m pip install -r requirements.txt
+# The extra index below pulls the CPU-only torch build (~200 MB instead of ~2.5 GB with CUDA).
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# --- core data stack ---
+numpy==2.5.4
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+joblib==1.6.0
+pyyaml==6.0.3
+
+# --- plotting ---
+matplotlib==3.11.2
+seaborn==0.13.2
+
+# --- models ---
+xgboost==3.4.1
+torch==2.15.0          # resolves to 2.15.0+cpu via the extra index
+sktime==1.2.0          # ROCKET / MiniRocket
+numba==0.68.1          # required by sktime's (Mini)Rocket transforms; sktime does NOT pull it in itself
+
+# --- tuning, tracking, explainability ---
+optuna==5.0.0
+mlflow==3.17.2
+shap==0.54.1
+
+# --- serving & monitoring ---
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.2
+prometheus-client==0.26.0
+
+# --- data download ---
+kagglehub==1.0.3
+
+# --- testing & notebooks ---
+pytest==9.2.0
+httpx==0.28.1          # needed by fastapi.testclient
+ipykernel==7.4.0       # lets VS Code / Jupyter use this venv as a kernel
