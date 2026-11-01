@@ -29,4 +29,18 @@ Impact: none. The original scope is restored in docs/pm_planner_v4.html. The han
   "cut order" (HANDOFF.md section 8.3) is NOT in force.
 
 --------------------------------------------------------------------------------
+[DV-002] 2026-11-02 | APPROVED
+What: Final (tuned) models are trained on the same 80 training engines, with the
+  same 20 validation engines for early stopping, as every other model. They are
+  NOT retrained on all 100 engines.
+Original plan: planner task w4t5, "Retrain on full training data with best params".
+Why: every model family (XGBoost, TCN, Bi-LSTM, uni-LSTM, ROCKET) then follows
+  one identical protocol, so the comparison table is strictly like-for-like.
+  The final model also keeps a held-out early-stopping signal instead of a
+  guessed fixed tree/epoch count.
+Impact: final models see 80% of the training engines. Absolute test scores may
+  be slightly worse than an all-100 refit would give; the model comparison is
+  fairer. Applies to all model families.
+
+--------------------------------------------------------------------------------
 (no open proposals)

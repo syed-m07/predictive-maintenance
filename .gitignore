@@ -35,3 +35,6 @@ venv/
 
 # ---- private notes (full unredacted handoff stays local) ----
 docs/HANDOFF_private.md
+
+# ---- Optuna study storage (re-creatable by re-running the search) ----
+optuna.db
