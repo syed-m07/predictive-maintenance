@@ -49,6 +49,19 @@ Sources of truth, in order: this file → [`HANDOFF.md`](HANDOFF.md) → [`pm_pl
 | D8 | **s9 and s14 kept, with a recorded caveat.** | They carry real per-engine information and are part of the benchmark's standard 14-sensor set. Caveat: they are 96 % correlated with each other, and their trend direction differs between engines (some rise sharply near failure, some drift down). Watch how SHAP weights them. |
 | D9 | **Known consequence of P3 (unclipped test truth):** 11 of the 100 FD001 test engines have true RUL > 125 (max 145). Models trained on clipped labels predict ≤ 125, so up to 20 cycles of error on those engines is unavoidable. | Not a bug; documented so the RMSE isn't misread. The README states it next to the results. |
 
+## 3b. Feature-pipeline decisions (Block 3)
+
+| # | Decision | Why |
+|---|---|---|
+| F1 | **One entry point, `prepare_data(subset)`**, runs load → drop → RUL → clip → split → fit scaler (train only) → apply. Every training script calls it. | Leakage usually creeps in when each script re-implements the order. One function = one order, tested once. |
+| F2 | Validation = **20 random engines** (seed 42), not ids 81–100. FD001 val engines: 8 9 13 18 37 46 48 50 55 62 64 69 72 74 76 84 85 87 90 95. | Random by seed avoids any accidental ordering effect in engine ids, and stays reproducible. |
+| F3 | **MinMax scaler** (not Standard). | Bounded [0, 1] inputs suit the neural nets. Data has no extreme outliers (verified in EDA). Irrelevant for XGBoost (trees don't care about scale). |
+| F4 | **No absolute `cycle` feature.** All 238 features depend only on the last ≤ 30 cycles (EMA: negligible older weight, 0.7³⁰ ≈ 2·10⁻⁵). | The API receives a recent window of readings, not the engine's age. A test proves features from the last 30 rows equal features from the full history, so serving computes exactly what training computed. |
+| F5 | Lags before an engine's (k+1)-th cycle use the engine's **first** reading. Rolling windows use `min_periods=1`; first-row rolling std = 0. | No NaN, and no value from the future (back-filling would use later cycles). |
+| F6 | Short engines (< 30 cycles) are **left-padded by repeating their first row** at test time. Training uses only full windows (every train engine has ≥ 128 cycles). | Assumes the engine was in its earliest observed state before observation began. Uses no future data. Needed for FD002 (min 21) and FD004 (min 19). |
+| F7 | **Leakage tests were mutation-checked:** the code was deliberately broken three ways (centred rolling window, scaler fit on train+val, row-level split) and the suite had to fail each time. The first run exposed a gap: the scaler-on-train+val mutation passed. A pipeline-level test was added; all three are now caught. | A test that has never failed proves nothing. |
+| F8 | **Finding: rolling-std features are the weakest family** (best \|ρ\| 0.47 vs raw 0.72, rolling mean / EMA 0.76). The original plan expected rolling std to rise toward failure. In FD001 the sensor *level* drifts, but its noise does not grow. The features are **kept** (no evidence-free pruning); SHAP will show whether XGBoost uses them. | Reported honestly in `02_Feature_Engineering.ipynb` instead of repeating the planner's expectation. |
+
 ## 4. Corrections to the original plan (not shortcuts: the original was wrong)
 
 Full list in HANDOFF.md §7; all applied to planner v4.
@@ -68,6 +81,6 @@ Full list in HANDOFF.md §7; all applied to planner v4.
 | R1 | Untracked the empty placeholder files `trained_models/xgboost_v1.pkl`, `trained_models/lstm_v1.pt` and `mlruns/.gitkeep`. | They were committed before `.gitignore` existed, so git kept tracking them; the ignore rules never applied. Model files are build outputs, and MLflow creates `mlruns/` itself. |
 | R2 | `.gitignore`: `trained_models/*` except `model_registry.csv`; fixed `.ipynb_checkpoints/` (the dot was missing); added `mlflow.db`, `.pytest_cache/`. | The registry CSV *is* the versioned record of which model produced which numbers; weights are reproducible. |
 | R3 | Commits: conventional prefixes, and the body explains what changed and why. No AI co-author trailer. | The commit history is part of the portfolio and the debugging trail. |
-| R4 | Removed the empty `notebooks/Week1_EDA … Week5_LSTM.ipynb` placeholders. Notebooks follow HANDOFF §9 naming (`01_EDA`, `02_Results_and_Comparison`, `03_SHAP`, `04_Attention`). | All five were 0 bytes. They were slots for the old Colab-lab workflow, which P1 replaced. |
+| R4 | Removed the empty `notebooks/Week1_EDA … Week5_LSTM.ipynb` placeholders. Notebooks: `01_EDA`, `02_Feature_Engineering` (added: the planner's Week-2 feature plots), then `03_Results_and_Comparison`, `04_SHAP`, `05_Attention` (HANDOFF §9 numbering shifted by one). Every figure carries a "How to read this figure" note. | All five were 0 bytes. They were slots for the old Colab-lab workflow, which P1 replaced. |
 | R5 | Two `src/` modules beyond the HANDOFF layout: `src/eda.py` (drop-rule statistics) and `src/plotting.py` (one shared figure style). | Keeps notebooks free of logic (P1), makes the drop decision testable, and gives every figure the same colours and chrome. |
 | R6 | Figures are saved to `results/*.png` and committed. Notebooks are committed **with outputs**. | The README and GitHub viewers need the images without re-running anything. Notebooks are re-executed with nbconvert before each commit, so the outputs match the code. |
