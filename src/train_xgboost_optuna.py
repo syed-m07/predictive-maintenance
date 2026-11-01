@@ -72,8 +72,9 @@ def make_objective(f_train, f_val, names):
     return objective
 
 
-def plot_study(study: optuna.Study, prefix: str) -> list:
-    """Optimisation history, hyperparameter importance, parallel coordinates -> results/."""
+def plot_study(study: optuna.Study, prefix: str, n_startup: int = N_STARTUP_TRIALS) -> list:
+    """Optimisation history, hyperparameter importance, parallel coordinates -> results/.
+    Shared by the deep-model studies (src/deep_tuning.py)."""
     import matplotlib.pyplot as plt
     import numpy as np
     from optuna.visualization.matplotlib import plot_parallel_coordinate
@@ -87,12 +88,14 @@ def plot_study(study: optuna.Study, prefix: str) -> list:
     fig, ax = plt.subplots(figsize=(9, 3.6))
     ax.scatter(nums, vals, s=14, color=MUTED, label="trial")
     ax.plot(nums, np.minimum.accumulate(vals), color=BLUE, label="best so far")
-    ax.axvline(N_STARTUP_TRIALS - 0.5, color=TEXT_SECONDARY, lw=1, ls="--")
-    ax.text(N_STARTUP_TRIALS, ax.get_ylim()[1] * 0.98, " TPE starts", va="top", color=TEXT_SECONDARY, fontsize=8.5)
+    ax.axvline(n_startup - 0.5, color=TEXT_SECONDARY, lw=1, ls="--")
+    ax.text(n_startup, ax.get_ylim()[1] * 0.98, " TPE starts", va="top", color=TEXT_SECONDARY, fontsize=8.5)
     ax.set(title="Optuna: validation RMSE per trial (lower is better)", xlabel="trial", ylabel="validation RMSE")
     ax.legend(loc="upper right"); fig.tight_layout()
     paths.append(RESULTS_DIR / f"{prefix}_history.png"); fig.savefig(paths[-1]); plt.close(fig)
 
+    if len(done) < 2:                       # importance / parallel plots need >= 2 finished trials
+        return paths
     imp = optuna.importance.get_param_importances(
         study, evaluator=optuna.importance.FanovaImportanceEvaluator(seed=SEED))
     fig, ax = plt.subplots(figsize=(7, 3.4))
