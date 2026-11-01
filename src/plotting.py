@@ -81,7 +81,7 @@ def plot_test_predictions(truth, pred, title: str, max_rul: int = 125) -> plt.Fi
     ax.scatter(x, pred[order], s=16, color=ORANGE, zorder=3, label="predicted",
                edgecolors=SURFACE, linewidths=0.8)
     ax.axhline(max_rul, color=TEXT_SECONDARY, lw=1, ls="--")
-    ax.text(1, max_rul + 3, f"cap {max_rul}", color=TEXT_SECONDARY, fontsize=8.5)
+    ax.text(len(truth) - 1, max_rul + 3, f"cap {max_rul}", color=TEXT_SECONDARY, fontsize=8.5, ha="right")
     ax.set(title=title, xlabel="test engines, sorted by true RUL", ylabel="RUL (cycles)")
     ax.legend(loc="upper left")
     fig.tight_layout()

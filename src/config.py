@@ -13,6 +13,10 @@ from pathlib import Path
 
 import numpy as np
 
+# Silence MLflow's informational "agent hint" banner. Set here because config is imported
+# before mlflow everywhere.
+os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
+
 # ---------------------------------------------------------------- paths
 # Resolved from this file's location, so scripts work no matter which folder you run them from.
 ROOT_DIR = Path(__file__).resolve().parent.parent
