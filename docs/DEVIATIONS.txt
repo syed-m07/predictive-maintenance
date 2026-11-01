@@ -1,0 +1,32 @@
+DEVIATIONS & SHORTCUTS LOG
+==========================
+Rule (set by the owner, 2026-11-01): NO shortcuts. The project keeps its original,
+resume-grade scope regardless of the deadline. Any shortcut or deviation from the
+original plan must be (1) proposed to the owner FIRST, (2) approved, and (3) logged
+here with the reason. Nothing in this file may be applied silently.
+
+Format:
+  [ID] date | status (PROPOSED / APPROVED / REJECTED / REVERTED)
+  What: ...
+  Original plan: ...
+  Why: ...
+  Impact on results / story: ...
+
+Note: fixes for things that were WRONG in the original plan (e.g. per-engine
+normalisation, the 17731 row count) are corrections, not shortcuts. They are
+documented in docs/DECISIONS.md, not here.
+
+--------------------------------------------------------------------------------
+[DV-001] 2026-11-01 | REVERTED
+What: The handoff's 2-day plan reduced scope to meet the deadline: XGBoost Optuna
+  100 -> 50 trials; TCN Optuna 50 -> 10-15 trials (P1); LSTM Optuna made optional;
+  Bi-LSTM, Optuna visualisations, multi-model plot, demo video and paper outline
+  marked cuttable ("P1/P2" + a cut order).
+Original plan: everything above was in the 10-week plan.
+Why reverted: the owner ruled out shortcuts. Colab's free T4 GPU makes the original
+  trial counts feasible for the deep models.
+Impact: none. The original scope is restored in docs/pm_planner_v4.html. The handoff's
+  "cut order" (HANDOFF.md section 8.3) is NOT in force.
+
+--------------------------------------------------------------------------------
+(no open proposals)

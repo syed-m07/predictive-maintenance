@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PM Project Planner — NASA C-MAPSS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --text-primary:   #e2e8f0;
+      --text-secondary: #cbd5e1;
+      --text-muted:     #94a3b8;
+      --surface-0:      #0f172a;
+      --surface-1:      #1e293b;
+      --surface-2:      #2d3f55;
+      --border:         #334155;
+      --border-strong:  #64748b;
+      --border-success: #10b981;
+      --border-warning: #f59e0b;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #root {
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    textarea:focus { outline: 2px solid #3b82f6; outline-offset: -1px; }
+
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    // localStorage shim for window.storage (replaces Claude artifact storage API)
+    window.storage = {
+      get: async function(key) {
+        try {
+          const val = localStorage.getItem('pm_planner_' + key);
+          if (val === null) throw new Error('Key not found');
+          return { key: key, value: val };
+        } catch(e) { throw e; }
+      },
+      set: async function(key, value) {
+        localStorage.setItem('pm_planner_' + key, value);
+        return { key: key, value: value };
+      },
+      delete: async function(key) {
+        localStorage.removeItem('pm_planner_' + key);
+        return { key: key, deleted: true };
+      }
+    };
+  </script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+
+
+<script>
+const {useState,useEffect} = React;
+
+const TM = {
+  STUDY:  {color:'#F59E0B',bg:'rgba(245,158,11,0.13)'},
+  CODE:   {color:'#3B82F6',bg:'rgba(59,130,246,0.13)'},
+  COLAB:  {color:'#F97316',bg:'rgba(249,115,22,0.13)'},
+  COMMIT: {color:'#10B981',bg:'rgba(16,185,129,0.13)'},
+  DOC:    {color:'#06B6D4',bg:'rgba(6,182,212,0.13)'},
+  SETUP:  {color:'#8B5CF6',bg:'rgba(139,92,246,0.13)'},
+};
+
+const WEEKS = [
+  {id:1,title:"Environment Setup + EDA",
+   obj:"Build your foundation before a single model is trained. Structure set up now saves tens of hours later. Deep familiarity with the dataset means every downstream decision is informed, not guessed.",
+   secs:[
+    {id:"w1s1",title:"Repository & Environment",tasks:[
+      {id:"w1t1",type:"SETUP",title:"Create Git repo with full directory structure",
+       desc:"Scaffold ALL directories before anything else: notebooks/, src/, src/models/, data/raw/, data/processed/, trained_models/, tests/, mlruns/, configs/, scripts/, results/. Add __init__.py to src/ and src/models/. A recruiter cloning your repo should instantly understand the layout without a README."},
+      {id:"w1t2",type:"SETUP",title:"Write .gitignore",
+       desc:"Exclude: data/raw/, data/processed/, trained_models/*.pkl, trained_models/*.pt, mlruns/, .ipynb_checkpoints/, __pycache__/, *.pyc, .env, venv/. Raw data is 50MB and model weights 100MB+ — never commit these. Set this up before any other files exist."},
+      {id:"w1t3",type:"SETUP",title:"Create requirements.txt",
+       desc:"Include: torch, xgboost, optuna, mlflow, fastapi, uvicorn, shap, scikit-learn, pandas, numpy, matplotlib, seaborn, scipy, pytest. Pin major versions. This file is your reproducibility contract — first act of professional engineering."},
+      {id:"w1t4",type:"DOC",title:"Write data/data_manifest.txt",
+       desc:"Document: dataset name (C-MAPSS Turbofan Engine Degradation), NASA source URL, the 4 subsets and their differences, column structure (unit_id, cycle, 3 op settings, 21 sensors), download instructions. Since raw data is gitignored, this is how anyone reproduces the setup."},
+      {id:"w1t5",type:"COMMIT",title:"Initial commit: project scaffold",
+       desc:"git add . && git commit -m 'chore: Initialize project structure'. This marks Day 1 of real engineering work. Every commit from here tells the story of your process — make messages meaningful."},
+    ]},
+    {id:"w1s2",title:"Study This Week",tasks:[
+      {id:"w1t6",type:"STUDY",title:"RUL problem framing (2–3 hours)",
+       desc:"Understand what RUL means in the C-MAPSS context: RUL = max_cycle_per_engine − current_cycle. Learn the piecewise linear degradation model and WHY engineers clip RUL at 125 cycles (healthy early phase has no usable degradation signal). You've started this already — focus on why the clipping is standard across all benchmark papers."},
+      {id:"w1t7",type:"STUDY",title:"EDA fundamentals refresher (2 hours)",
+       desc:"Refresh: histogram/KDE plots, correlation heatmaps, time-series line plots, identifying near-constant features via variance. You'll do all of this hands-on in Colab this week — use this as a quick prep, not a deep dive."},
+      {id:"w1t8",type:"STUDY",title:"Read the C-MAPSS dataset description (Saxena 2008)",
+       desc:"Read the original NASA paper or a solid blog summary. Understand: what the 21 sensors measure physically, what 3 operating conditions represent, how FD001–FD004 differ (FD001: 1 op condition + 1 fault; FD004: 6 conditions + 2 faults). Domain knowledge here directly informs which sensors to engineer features from."},
+    ]},
+    {id:"w1s3",title:"Colab: Week1_EDA.ipynb",tasks:[
+      {id:"w1t9",type:"COLAB",title:"Load FD001 train & test data",
+       desc:"Files are space-separated with no headers. Add column names: ['unit_id','cycle','op1','op2','op3','s1'...'s21']. Load train_FD001.txt and test_FD001.txt. Print .shape (train ~17731 rows), .head(), .describe(), check for NaN. First hands-on moment with real industrial sensor data."},
+      {id:"w1t10",type:"COLAB",title:"Compute and visualize RUL labels",
+       desc:"Training data: group by unit_id, find max cycle, subtract current cycle → RUL column. Plot: (a) histogram of max_cycle values — how long do engines survive, (b) RUL curve for engine #1 — should decline as a straight line to 0 at failure. This visual makes the clipping decision intuitive."},
+      {id:"w1t11",type:"COLAB",title:"Plot sensor readings over time for 5 engines",
+       desc:"Pick 5 engine IDs. Plot key sensors vs cycle number. Hunt for degradation trends: sensors that drift as failure approaches (useful) vs flat/noisy sensors (useless). Mark informative sensors in a markdown cell — you'll use this list in Week 2."},
+      {id:"w1t12",type:"COLAB",title:"Correlation heatmap + identify sensors to drop",
+       desc:"Compute Pearson correlation of all 21 sensors with RUL. Seaborn heatmap. Identify near-constant sensors (often s1, s5, s6, s10, s16, s18, s19 in FD001). Document drop decisions — removing useless features reduces noise without losing signal."},
+      {id:"w1t13",type:"COLAB",title:"Write Key Findings section + download notebook",
+       desc:"Add a markdown cell: which sensors are informative, average engine lifetime, anything surprising. File → Download → .ipynb. Every week follows this pattern: explore in Colab, download, commit. Never leave notebooks only in Colab — sessions expire."},
+    ]},
+    {id:"w1s4",title:"IDE: src/data_loader.py",tasks:[
+      {id:"w1t14",type:"CODE",title:"Write load_cmapss(subset, split) → pd.DataFrame",
+       desc:"Takes subset ('FD001'–'FD004') and split ('train'/'test'), loads .txt file from data/raw/, adds column names, returns DataFrame. Works identically for all 4 subsets — generality here saves work in later multi-dataset experiments. Add type hints and docstring."},
+      {id:"w1t15",type:"CODE",title:"Write compute_rul(train_df) → pd.DataFrame",
+       desc:"Groups by unit_id, finds max cycle per unit, subtracts current cycle → 'rul' column. Assert that the last cycle of every engine has RUL=0. Return the DataFrame with the new column."},
+      {id:"w1t16",type:"COMMIT",title:"Commit data loader + EDA notebook",
+       desc:"git add notebooks/Week1_EDA.ipynb src/data_loader.py && git commit -m 'feat: C-MAPSS data loader with RUL computation + Week 1 EDA notebook'. Quick test: python -c 'from src.data_loader import load_cmapss; print(load_cmapss(\"FD001\",\"train\").shape)' — should print (17731, 26)."},
+    ]},
+   ],
+   dels:["Git repo with full directory structure committed to GitHub","src/data_loader.py — importable and tested","notebooks/Week1_EDA.ipynb committed, proving dataset understanding","List of sensors to keep/drop for feature engineering"]
+  },
+
+  {id:2,title:"Feature Engineering",
+   obj:"Transform raw sensor readings into signals that tell a model about degradation. This is the highest-leverage step in the project — well-engineered features let a simple model beat a complex one. Don't rush this week.",
+   secs:[
+    {id:"w2s1",title:"Study This Week",tasks:[
+      {id:"w2t1",type:"STUDY",title:"Time-series feature engineering (2–3 hours)",
+       desc:"Core techniques: (1) Rolling window stats — mean/std/min/max over a sliding W-cycle window. A rolling-std spike signals increased variability = degradation. (2) Lag features — sensor value at t-1, t-5, t-10 captures rate of change. (3) EMA — smoothed signal, reduces noise. Each captures a different aspect of how the engine degrades over its lifetime."},
+      {id:"w2t2",type:"STUDY",title:"Normalization in time-series — prevent leakage (1 hour)",
+       desc:"Normalize PER ENGINE, not globally. Different engines may have different baseline sensor values; global normalization leaks cross-engine variance. MinMaxScaler fit ONLY on training engine cycles, then APPLY (transform, don't refit) to test engines. Getting this wrong invalidates your benchmark — interviewers specifically test this."},
+      {id:"w2t3",type:"STUDY",title:"Piecewise linear RUL clipping — why 125? (30 min)",
+       desc:"Engines have two phases: healthy (no degradation signal early in life) and degradation (sensors drift toward failure). Clipping at 125 tells the model: don't try to predict beyond this horizon, treat early cycles as equivalent. Every C-MAPSS benchmark paper uses this setting — understand it conceptually so you can explain it in interviews and in the paper."},
+    ]},
+    {id:"w2s2",title:"Colab: Week2_FeatureEng.ipynb",tasks:[
+      {id:"w2t4",type:"COLAB",title:"Import from src/ via GitHub at notebook top",
+       desc:"!pip install -e git+https://github.com/yourusername/predictive-maintenance.git#egg=pm, then from src.data_loader import load_cmapss. If tricky, !git clone + sys.path.append works too. Colab should always use committed src/ code, not copy-pasted snippets that diverge from your repo."},
+      {id:"w2t5",type:"COLAB",title:"Drop low-variance sensors + per-engine normalization",
+       desc:"Drop the near-constant sensors from Week 1. Normalize per engine: fit MinMaxScaler on each training engine's cycles, apply it. Verify: min/max of normalized sensor values for any training engine = [0.0, 1.0]. Apply same scaler params to test engines — don't refit on test data."},
+      {id:"w2t6",type:"COLAB",title:"Rolling window features — windows [5, 10, 30]",
+       desc:"GroupBy unit_id, apply rolling(W).mean()/.std()/.min()/.max() for key sensors. Handle NaN at sequence starts via forward-fill. Plot rolling_std of sensor s11 for engine 1 — it should increase near failure. This visual validates your feature engineering choice."},
+      {id:"w2t7",type:"COLAB",title:"Lag features + EMA features",
+       desc:"Lag: groupby(unit_id).shift(lag) for lags [1, 5, 10]. EMA: groupby(unit_id).apply(lambda g: g.ewm(alpha=0.3).mean()). Both capture temporal dynamics that static snapshot values miss. After all features, verify no NaN in the middle of sequences — only at starts."},
+      {id:"w2t8",type:"COLAB",title:"Clip RUL at 125 + generate sliding window sequences",
+       desc:"df['rul'] = df['rul'].clip(upper=125). For LSTM/TCN: generate_sequences(df, seq_len=30) — slide a 30-cycle window across each engine. At each position: X = all features for those 30 cycles, y = RUL at the last cycle. Output shape: X is (n_samples, 30, n_features). Confirm in a markdown cell."},
+      {id:"w2t9",type:"COLAB",title:"Feature correlation chart + download notebook",
+       desc:"Pearson correlation of all engineered features with RUL. Bar chart sorted by absolute correlation. Rolling-std features typically rank higher than raw sensors — this validates your approach. Download as notebooks/Week2_FeatureEng.ipynb."},
+    ]},
+    {id:"w2s3",title:"IDE: src/feature_engineering.py",tasks:[
+      {id:"w2t10",type:"CODE",title:"Write drop_low_variance_sensors + normalize_per_engine",
+       desc:"drop_low_variance_sensors(df, sensors_to_drop) → DataFrame. normalize_per_engine(train_df, test_df) → (train_df, test_df, scalers_dict) where scalers_dict maps unit_id → fitted MinMaxScaler. The scalers_dict is needed later for inverse-transforming predictions."},
+      {id:"w2t11",type:"CODE",title:"Write add_rolling_features + add_lag_features + add_ema_features",
+       desc:"Each function takes DataFrame, list of sensor columns, and a parameter (windows/lags/alpha). Groups by unit_id, computes features, returns augmented DataFrame. Naming: {sensor}_{feature}_{param} — consistent naming is critical when you have 50+ feature columns."},
+      {id:"w2t12",type:"CODE",title:"Write clip_rul + generate_sequences",
+       desc:"clip_rul(df, max_rul=125) → DataFrame. generate_sequences(df, seq_len=30, feature_cols, target_col='rul') → (X: np.ndarray, y: np.ndarray), X shape (n_samples, seq_len, n_features). Called by every model training script — test these thoroughly."},
+      {id:"w2t13",type:"COMMIT",title:"Commit feature pipeline + notebook",
+       desc:"git add notebooks/Week2_FeatureEng.ipynb src/feature_engineering.py && git commit -m 'feat: Feature engineering pipeline — rolling stats, lags, EMA, sequence generation'. Import test before committing."},
+    ]},
+   ],
+   dels:["Reproducible pipeline: raw C-MAPSS → model-ready arrays in one call chain","Understanding of what each feature captures about degradation","Normalized, clipped, sequenced arrays ready for model training","notebooks/Week2_FeatureEng.ipynb committed"]
+  },
+
+  {id:3,title:"XGBoost Baseline + MLflow + Evaluation",
+   obj:"Train your first model and establish the benchmark every future model is measured against. Also build the full evaluation suite — including the NASA asymmetric scoring function — that all models will reuse.",
+   secs:[
+    {id:"w3s1",title:"Study This Week",tasks:[
+      {id:"w3t1",type:"STUDY",title:"XGBoost refresher (2 hours)",
+       desc:"Gradient boosting: ensemble of shallow trees built sequentially, each correcting residuals of the previous. Key hyperparams: n_estimators, max_depth, learning_rate, subsample, colsample_bytree, reg_alpha/lambda. For tabular features, XGBoost is often competitive with deep models — a weak baseline means a feature engineering problem, not a model problem."},
+      {id:"w3t2",type:"STUDY",title:"Time-series train/val split — CRITICAL (1 hour)",
+       desc:"Never split time-series randomly — a random split puts future cycles from the same engine into validation, which is data leakage. Correct: split by engine ID. Engines 1-80 → training, 81-100 → validation. This simulates real deployment: the model has never seen these engines. Comes up in almost every ML interview — know it cold."},
+      {id:"w3t3",type:"STUDY",title:"NASA asymmetric scoring function — know this deeply",
+       desc:"For error d = predicted − actual: s = exp(−d/13)−1 if d<0 (early), s = exp(d/10)−1 if d≥0 (late). Late predictions are penalized ~3× more. Why: predicting an engine survives 50 more cycles when it fails in 10 is catastrophic; predicting early just triggers earlier maintenance. This asymmetry is the domain insight that shows you understand the problem beyond generic metrics — mention it in every interview."},
+      {id:"w3t4",type:"STUDY",title:"MLflow basics (2 hours)",
+       desc:"Core API: mlflow.set_experiment('rul-xgboost'), with mlflow.start_run(): mlflow.log_param('lr', 0.1), mlflow.log_metric('rmse', 42.3), mlflow.log_artifact('plots/fi.png'). Run mlflow ui → localhost:5000 after training. Essential for tracking 5+ models and 100+ Optuna trials without losing what worked."},
+    ]},
+    {id:"w3s2",title:"Colab: Week3_XGBoostBaseline.ipynb",tasks:[
+      {id:"w3t5",type:"COLAB",title:"Load features, split by engine ID, train default XGBoost",
+       desc:"Import from src/. Run full pipeline: load → feature engineer → split by engine ID (not random). Train xgb.XGBRegressor with default params first — this is your true baseline. Log all params to MLflow. XGBoost uses the flat feature vectors, not sequences."},
+      {id:"w3t6",type:"COLAB",title:"Evaluate RMSE, MAE, NASA score + prediction plot",
+       desc:"Compute all 3 metrics on validation set. For 5 test engines, plot actual RUL (line) vs predicted (scatter) over their lifetime. Expected RMSE: 25–45 on FD001 with default params. Save as results/xgboost_baseline_predictions.png."},
+      {id:"w3t7",type:"COLAB",title:"XGBoost feature importance plot + download notebook",
+       desc:"xgb_model.feature_importances_ → sorted bar chart. Rolling-std features ranking high validates your Week 2 work. Download as notebooks/Week3_XGBoostBaseline.ipynb — this is your proof of first results."},
+    ]},
+    {id:"w3s3",title:"IDE: Evaluation Suite + XGBoost Module",tasks:[
+      {id:"w3t8",type:"CODE",title:"Write src/evaluation.py",
+       desc:"Functions: rmse(y_true, y_pred), mae(y_true, y_pred), r_squared(y_true, y_pred), nasa_score(y_true, y_pred) → float, evaluate_model(model, X, y) → dict with all metrics. Reused by EVERY model — implement nasa_score exactly and test it independently first."},
+      {id:"w3t9",type:"CODE",title:"Write src/models/xgboost_rul.py",
+       desc:"XGBoostRUL class: __init__(params), fit(X, y) with MLflow logging, predict(X), evaluate(X, y) → metrics dict, save(path), load(path). Wraps xgb.XGBRegressor and handles MLflow internally so training scripts stay clean."},
+      {id:"w3t10",type:"CODE",title:"Write src/train_xgboost.py (standalone training script)",
+       desc:"Loads data, runs feature pipeline, splits by engine ID, trains XGBoostRUL, evaluates, logs to MLflow, saves to trained_models/xgboost_v1.pkl. Runnable as: python src/train_xgboost.py. Update trained_models/model_registry.csv with results."},
+      {id:"w3t11",type:"COMMIT",title:"Commit evaluation + XGBoost + notebook",
+       desc:"git add notebooks/Week3_XGBoostBaseline.ipynb src/evaluation.py src/models/xgboost_rul.py src/train_xgboost.py trained_models/model_registry.csv && git commit -m 'feat: XGBoost baseline, NASA evaluation suite, MLflow tracking'"},
+    ]},
+   ],
+   dels:["First real benchmark: RMSE, MAE, NASA score on FD001 test set","src/evaluation.py with NASA score — reused by ALL future models","MLflow experiment logged, viewable at localhost:5000","notebooks/Week3_XGBoostBaseline.ipynb committed"]
+  },
+
+  {id:4,title:"Optuna Hyperparameter Tuning",
+   obj:"Systematically find the best XGBoost configuration through Bayesian optimization. More importantly, learn the Optuna pattern once here — you'll apply it to TCN and LSTM with zero friction.",
+   secs:[
+    {id:"w4s1",title:"Study This Week",tasks:[
+      {id:"w4t1",type:"STUDY",title:"Optuna concepts (2 hours)",
+       desc:"Core API: create_study(direction='minimize'), study.optimize(objective, n_trials=100). The objective function samples hyperparams via trial.suggest_float/int/categorical, trains, returns validation RMSE. Optuna's TPE (Tree-structured Parzen Estimator) learns which regions produce good results and samples them more. After 100 trials it converges to near-optimal."},
+      {id:"w4t2",type:"STUDY",title:"Grid vs random vs Bayesian optimization — know cold",
+       desc:"Grid: exhaustive, exponentially expensive. Random: surprisingly effective for same compute (Bergstra & Bengio 2012). Bayesian (Optuna TPE): learns from past results to guide future sampling. For your 7+ continuous hyperparameters, Bayesian is the only practical choice. Standard interview question — have a crisp 2-sentence answer ready."},
+      {id:"w4t3",type:"STUDY",title:"Walk-forward cross-validation for time series (1 hour)",
+       desc:"Standard k-fold shuffles data randomly — for time-series, future cycles leak into training folds. Walk-forward: train on engines 1-60, validate 61-70; then 1-70, validate 71-80; etc. Each fold uses only historical data. For efficiency you'll use a single engine-based split, but know WHY walk-forward is the rigorous answer."},
+    ]},
+    {id:"w4s2",title:"IDE: Optuna Script",tasks:[
+      {id:"w4t4",type:"CODE",title:"Write src/train_xgboost_optuna.py",
+       desc:"Define objective(trial): sample n_estimators [100-1000], max_depth [3-12], learning_rate [0.001-0.3 log], subsample [0.5-1.0], colsample_bytree [0.5-1.0], reg_alpha [0-10], reg_lambda [0-10]. Train XGBoostRUL, return val RMSE. Each trial logs to MLflow as a nested run. Run 100 trials."},
+      {id:"w4t5",type:"CODE",title:"Save best params + retrain final model",
+       desc:"study.best_params → save to configs/xgboost_best_params.json. Retrain on full training data with best params. Evaluate on test set. Update model_registry.csv with 'xgboost_tuned' row. Expected improvement: 5–15% RMSE reduction."},
+      {id:"w4t6",type:"COMMIT",title:"Commit Optuna script",
+       desc:"git add src/train_xgboost_optuna.py configs/xgboost_best_params.json trained_models/model_registry.csv && git commit -m 'feat: Optuna HPO for XGBoost — 100 trials with MLflow nested run logging'"},
+    ]},
+    {id:"w4s3",title:"Colab: Week4_Optuna_Validation.ipynb",tasks:[
+      {id:"w4t7",type:"COLAB",title:"Visualize Optuna study results",
+       desc:"Load the completed study. Plot: (1) Optimization history — RMSE per trial showing convergence, (2) Hyperparameter importance — which params matter most (usually learning_rate and max_depth dominate), (3) Parallel coordinates — correlations between param values and results. Great for portfolio and the paper's experiments section."},
+      {id:"w4t8",type:"COLAB",title:"Compare baseline vs tuned XGBoost + download",
+       desc:"Side-by-side metric table: default XGBoost (Week 3) vs tuned. Confirm the improvement is real. Download as notebooks/Week4_Optuna_Validation.ipynb and commit."},
+    ]},
+   ],
+   dels:["Tuned XGBoost with measurable RMSE improvement over default","configs/xgboost_best_params.json for full reproducibility","Optuna visualization notebook — Bayesian optimization story documented","Reusable Optuna pattern ready for TCN and LSTM"]
+  },
+
+  {id:5,title:"TCN — Temporal Convolutional Network",
+   obj:"Implement your first deep learning model. TCN is the strongest architectural choice here — modern, parallelizable, and competitive with or superior to LSTMs. Recruiters who know the field notice you chose TCN over vanilla CNN.",
+   secs:[
+    {id:"w5s1",title:"Study This Week",tasks:[
+      {id:"w5t1",type:"STUDY",title:"TCN architecture — dilated causal convolutions (3 hours)",
+       desc:"Three ideas: (1) Causal convolutions — output at time t only uses inputs at t and earlier, no future leakage. (2) Dilated convolutions — skip every d positions; with dilation [1,2,4,...,512] stacked you get exponential receptive field growth with few layers. (3) Residual connections — skip connections stabilize training. TCN fully parallelizes training unlike LSTM's sequential hidden state. Read Bai et al. 2018 at minimum the abstract and conclusion."},
+      {id:"w5t2",type:"STUDY",title:"PyTorch training loop refresher (2 hours)",
+       desc:"Components: nn.Module (architecture), DataLoader (batching), training loop (forward → loss.backward() → optimizer.step()), validation loop (torch.no_grad()), early stopping (track best val loss, restore at patience), LR scheduling. If rusty on PyTorch, run a basic regression on a toy dataset before touching the TCN."},
+      {id:"w5t3",type:"STUDY",title:"PyTorch Dataset class for sequences (1 hour)",
+       desc:"class RULDataset(Dataset): __init__(X, y) stores tensors; __len__ returns len(y); __getitem__(idx) returns (X[idx], y[idx]). Wrap in DataLoader(dataset, batch_size=256, shuffle=True). All future deep models reuse this same Dataset class — getting it right once matters."},
+    ]},
+    {id:"w5s2",title:"Colab: Week5_TCN_Validation.ipynb",tasks:[
+      {id:"w5t4",type:"COLAB",title:"Validate TCN on 1000-sample subset",
+       desc:"Build a small TCN, run 10 epochs on 1000 samples. Confirm loss decreases each epoch. Check gradients: add torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) to training loop. This catches architecture bugs before you waste a 2-hour GPU session on broken code."},
+      {id:"w5t5",type:"COLAB",title:"Plot loss curves + download notebook",
+       desc:"Run 20 epochs. Plot train loss vs val loss per epoch. Both should decrease together early. Diverging val = overfitting (add dropout). Flat plateau = lr too low or wrong architecture. Download as notebooks/Week5_TCN_Validation.ipynb."},
+    ]},
+    {id:"w5s3",title:"IDE: TCN Full Implementation",tasks:[
+      {id:"w5t6",type:"CODE",title:"Write src/models/tcn_rul.py",
+       desc:"TemporalBlock(nn.Module): dilated causal Conv1d, dropout, ReLU, residual connection (1×1 conv if channel dims differ). TCNModel(nn.Module): stack of N TemporalBlocks with dilations [1,2,4,...,2^(N-1)], take last timestep output, FC head → scalar RUL. Init params: input_size, num_channels (list), kernel_size, dropout."},
+      {id:"w5t7",type:"CODE",title:"Write src/dataset.py — RULDataset class",
+       desc:"PyTorch Dataset class as described. Also include split_by_engine_id(df, train_ids, test_ids, seq_len) helper that runs the full feature pipeline and returns two RULDataset objects. Training scripts stay short and clean when this logic lives in dataset.py."},
+      {id:"w5t8",type:"CODE",title:"Write src/train_tcn.py + src/train_tcn_optuna.py",
+       desc:"train_tcn.py: full training loop, early stopping, ReduceLROnPlateau, MLflow logging, checkpoint saving, model_registry.csv update. train_tcn_optuna.py: tune num_channels, kernel_size, dropout, lr with 50 Optuna trials. Save best to configs/tcn_best_params.json."},
+      {id:"w5t9",type:"COMMIT",title:"Commit TCN implementation",
+       desc:"git add src/models/tcn_rul.py src/dataset.py src/train_tcn.py src/train_tcn_optuna.py configs/tcn_best_params.json notebooks/Week5_TCN_Validation.ipynb trained_models/model_registry.csv && git commit -m 'feat: TCN with dilated causal convolutions, training pipeline, Optuna tuning'"},
+    ]},
+   ],
+   dels:["TCN trained on FD001, results in model_registry.csv","TCN should compete with or beat tuned XGBoost — if not, debug feature generation","Reusable src/dataset.py shared by all deep models","Training + Optuna pattern established for Week 6"]
+  },
+
+  {id:6,title:"Bi-LSTM with Attention",
+   obj:"Build the most interview-friendly architecture. Attention mechanisms let you visualize what the model focuses on — this interpretability story is compelling to hiring managers and directly differentiates you from candidates who only train black-box models.",
+   secs:[
+    {id:"w6s1",title:"Study This Week",tasks:[
+      {id:"w6t1",type:"STUDY",title:"LSTM gates — know from memory (2 hours)",
+       desc:"Four gates: forget f = σ(Wf·[h,x]+bf), input i = σ(Wi·[h,x]+bi), candidate c̃ = tanh(Wg·[h,x]+bg), output o = σ(Wo·[h,x]+bo). Cell update: c_t = f⊙c_{t-1} + i⊙c̃. Output: h_t = o⊙tanh(c_t). Cell state flows with minimal modification — why LSTMs avoid vanishing gradients. Draw this from memory before any ML interview."},
+      {id:"w6t2",type:"STUDY",title:"Bidirectional LSTMs + the inference trade-off (1 hour)",
+       desc:"Bi-LSTM processes sequences forward AND backward. At training time you have the full engine lifetime — justified. At inference you don't — you're predicting for an engine still operating. This is a real design trade-off worth discussing in your paper: it shows engineering maturity, not a flaw. Know how to articulate both benefit and limitation."},
+      {id:"w6t3",type:"STUDY",title:"Attention mechanism (2 hours)",
+       desc:"Bahdanau attention: score(h_t, h_s) = v^T·tanh(W1·h_t + W2·h_s). Softmax → attention weights α. Context vector c = Σ α·h_s. Attention weights tell you which timesteps drove the prediction — your interpretability story. Plot as a heatmap: do weights peak near failure? They should. This visualization is your portfolio signature."},
+    ]},
+    {id:"w6s2",title:"Colab: Week6_BiLSTM_Validation.ipynb",tasks:[
+      {id:"w6t4",type:"COLAB",title:"Validate architecture + check attention weights",
+       desc:"Train on subset, confirm loss decreases. Extract attention weights from a forward pass — print the weight vector (length=30). Weights should NOT be uniform. If they're nearly uniform, attention isn't learning — debug before full training."},
+      {id:"w6t5",type:"COLAB",title:"Attention weight heatmap — PORTFOLIO VISUAL",
+       desc:"For a test engine approaching failure: plot attention weights across the 30-cycle window for multiple prediction points as the engine progresses through life. Do weights shift toward recent cycles near failure? Save as results/attention_weights.png. This goes in the README, paper, and any interview presentation — it's your best visual."},
+    ]},
+    {id:"w6s3",title:"IDE: Bi-LSTM Implementation",tasks:[
+      {id:"w6t6",type:"CODE",title:"Write src/models/lstm_rul.py",
+       desc:"BahdanauAttention(nn.Module): linear layers for query/key, v vector, score computation, softmax, returns (context_vector, attention_weights). BiLSTMWithAttention(nn.Module): nn.LSTM(bidirectional=True), all hidden states through attention, FC head → RUL. forward() MUST return both prediction AND attention_weights — you need them for visualization."},
+      {id:"w6t7",type:"CODE",title:"Write src/train_lstm.py + src/train_lstm_optuna.py",
+       desc:"Same pattern as TCN. Tune: hidden_size [64-256], num_layers [1-3], dropout [0.1-0.5], lr [1e-4–1e-2]. 50 Optuna trials. Save best to configs/lstm_best_params.json. Update model_registry.csv."},
+      {id:"w6t8",type:"COMMIT",title:"Commit LSTM implementation",
+       desc:"git add src/models/lstm_rul.py src/train_lstm.py src/train_lstm_optuna.py configs/lstm_best_params.json notebooks/Week6_BiLSTM_Validation.ipynb trained_models/model_registry.csv && git commit -m 'feat: Bi-LSTM with Bahdanau attention, training pipeline, attention visualization'"},
+    ]},
+   ],
+   dels:["Bi-LSTM with attention trained on FD001, results in model_registry.csv","results/attention_weights.png — best portfolio visual, goes in README","Three working models: tuned XGBoost, TCN, Bi-LSTM with Attention","LSTM gate knowledge ready for interviews"]
+  },
+
+  {id:7,title:"ROCKET + SHAP + Model Comparison",
+   obj:"Add the most surprising model (ROCKET competes with deep models while training in 30 seconds), run SHAP explainability across your model family, and produce the definitive comparison table. This week generates your most important portfolio artifacts.",
+   secs:[
+    {id:"w7s1",title:"Study This Week",tasks:[
+      {id:"w7t1",type:"STUDY",title:"ROCKET model (2 hours)",
+       desc:"RandOm Convolutional KErnel Transform: generate 10,000 random convolutional kernels. Apply each to the input sequence. Extract 2 features per kernel: MAX value and Proportion of Positive Values (PPV). Train Ridge regression on the 20,000 features. Trains in 30 seconds and wins multiple time-series benchmarks against deep models. Your story: 'ROCKET is 300× faster to train than LSTM with results within 5% — major production implications for retraining latency.' That's a mature MLOps insight."},
+      {id:"w7t2",type:"STUDY",title:"SHAP explainability — mandatory (2 hours)",
+       desc:"SHAP attributes predictions to input features using Shapley values from game theory. For XGBoost: shap.TreeExplainer (exact, fast). For PyTorch: shap.GradientExplainer. Key plots: summary plot (all samples × all features, impact magnitude and direction), waterfall plot (single prediction breakdown). SHAP is what separates 'I trained a model' from 'I understand my model' — top companies specifically ask about this."},
+    ]},
+    {id:"w7s2",title:"IDE: ROCKET Model",tasks:[
+      {id:"w7t3",type:"CODE",title:"Write src/models/rocket_rul.py",
+       desc:"Use sktime's ROCKET (pip install sktime) or implement: generate_kernels(n=10000, input_length=30), apply_kernels(X, kernels) → (n_samples, 20000) feature matrix, fit Ridge regression. ROCKETModel class with same fit/predict/evaluate interface as other models. Measure and log training time — it's part of the story."},
+      {id:"w7t4",type:"CODE",title:"Add inference timing to src/evaluation.py",
+       desc:"Add time_inference(model, X_test, n_runs=100) → mean latency (ms) per sample. Runs n_runs forward passes, averages time. This production metric goes in your comparison table and demonstrates engineering awareness beyond accuracy alone."},
+      {id:"w7t5",type:"COMMIT",title:"Commit ROCKET + updated evaluation",
+       desc:"git add src/models/rocket_rul.py src/evaluation.py && git commit -m 'feat: ROCKET model + inference latency evaluation'"},
+    ]},
+    {id:"w7s3",title:"Colab: Model Comparison + SHAP",tasks:[
+      {id:"w7t6",type:"COLAB",title:"Final model comparison table notebook",
+       desc:"Load all trained models. Evaluate on same FD001 test set. Build comparison DataFrame: Model | RMSE | MAE | NASA Score | Latency (ms) | Training Time. Export as results/model_comparison.csv. This table goes in your README and paper's results section. Download as notebooks/Week7_ModelComparison.ipynb."},
+      {id:"w7t7",type:"COLAB",title:"Multi-model prediction plot on same test engines",
+       desc:"For 3 test engines: plot actual RUL vs predictions from ALL models in the same figure. Makes performance differences immediately legible. Save as results/multi_model_predictions.png — one of your strongest README visuals."},
+      {id:"w7t8",type:"COLAB",title:"SHAP analysis — XGBoost + best deep model",
+       desc:"XGBoost: shap.TreeExplainer(xgb_model), summary_plot(), waterfall_plot(). Best PyTorch model: shap.GradientExplainer. Compare top features between models — agreement = robust signal. Download as notebooks/Week7_SHAP.ipynb. Commit both SHAP and comparison notebooks."},
+    ]},
+   ],
+   dels:["results/model_comparison.csv — final table for paper and README","SHAP summary and waterfall plots — explainability story complete","results/multi_model_predictions.png for README","Clear winner model identified for Week 8 deployment"]
+  },
+
+  {id:8,title:"FastAPI Serving + Docker",
+   obj:"Deploy your best model as a containerized REST API. This is the line between an ML project and an ML engineering project. A working Docker container that serves predictions over HTTP makes this portfolio item credibly production-grade.",
+   secs:[
+    {id:"w8s1",title:"Study This Week",tasks:[
+      {id:"w8t1",type:"STUDY",title:"FastAPI (2 hours)",
+       desc:"FastAPI is async-first, auto-generates interactive OpenAPI docs at /docs, uses Pydantic for request/response validation. Core: @app.post('/predict'), async def predict(req: SensorWindow) → PredictionResponse. The auto-generated /docs UI lets you demo the API interactively without building any frontend — show this in your demo video."},
+      {id:"w8t2",type:"STUDY",title:"Docker (2 hours)",
+       desc:"Key Dockerfile pattern: FROM python:3.10-slim, WORKDIR /app, COPY requirements.txt first + RUN pip install (layer caching — code changes won't re-install deps), COPY src/ + trained_models/, EXPOSE 8000, CMD ['uvicorn','src.api.main:app','--host','0.0.0.0','--port','8000']. Build: docker build -t pm-api . Run: docker run -p 8000:8000 pm-api."},
+    ]},
+    {id:"w8s2",title:"IDE: API + Docker — No Colab This Week",tasks:[
+      {id:"w8t3",type:"CODE",title:"Write src/api/schemas.py",
+       desc:"Pydantic models: SensorWindow(BaseModel) with sensor_data: List[List[float]] + a validator checking shape is (seq_len, n_features). PredictionResponse(BaseModel): predicted_rul: float, model_version: str, timestamp: str. Clean schemas = self-documenting API."},
+      {id:"w8t4",type:"CODE",title:"Write src/api/model_loader.py",
+       desc:"Singleton that loads the best model ONCE at startup via @app.on_event('startup'). Never load the model on each request — that adds seconds of latency per call. Global variable or app.state pattern."},
+      {id:"w8t5",type:"CODE",title:"Write src/api/main.py",
+       desc:"Three endpoints: GET /health → {'status':'ok','model_loaded':bool}. GET /metadata → model version, training date, RMSE from model_registry.csv. POST /predict → takes SensorWindow, runs feature engineering on input, calls model.predict, returns PredictionResponse. Include try/except for prediction errors → return 500 with message."},
+      {id:"w8t6",type:"CODE",title:"Write Dockerfile",
+       desc:"As described in study notes. Keep image small — don't copy data/raw/, notebooks/, mlruns/. Test the build and run cycle locally before committing. A Dockerfile that fails to build is worse than no Dockerfile."},
+      {id:"w8t7",type:"DOC",title:"End-to-end test + screenshot /docs",
+       desc:"docker build -t pm-api . && docker run -p 8000:8000 pm-api. Send a real request with actual FD001 test data. Confirm RUL response is sensible. Open localhost:8000/docs — screenshot this for your README. This is your deployment proof."},
+      {id:"w8t8",type:"COMMIT",title:"Commit API + Docker",
+       desc:"git add src/api/ Dockerfile && git commit -m 'feat: FastAPI RUL prediction API with /predict, /health, /metadata endpoints + Dockerfile'"},
+    ]},
+   ],
+   dels:["Running Docker container serving RUL predictions via POST /predict","FastAPI /docs screenshot saved for README","A recruiter can clone → docker build → docker run → get predictions"]
+  },
+
+  {id:9,title:"Monitoring, Drift Detection + Retraining",
+   obj:"The most MLOps-heavy week. Production models degrade as the real world drifts from training. Detecting drift and automating retraining is what separates ML engineers from ML researchers — and what makes this project credibly production-grade.",
+   secs:[
+    {id:"w9s1",title:"Study This Week",tasks:[
+      {id:"w9t1",type:"STUDY",title:"Data drift types (2 hours)",
+       desc:"Covariate shift: P(X) changes but P(Y|X) stays the same. In C-MAPSS terms: a model trained on FD001 (1 operating condition) deployed on FD002 (6 conditions) sees shifted sensor distributions. Concept drift: P(Y|X) changes — the relationship between sensors and RUL changes fundamentally. FD001→FD002 is your covariate shift demonstration."},
+      {id:"w9t2",type:"STUDY",title:"KS test + Population Stability Index (2 hours)",
+       desc:"Kolmogorov-Smirnov: from scipy.stats import ks_2samp. ks_stat, p_value = ks_2samp(reference, current). p_value < 0.05 → drift detected. Apply per feature. PSI = Σ(actual% − expected%)×ln(actual%/expected%). PSI < 0.1 = stable, 0.1–0.2 = moderate, >0.2 = significant. PSI is common in production MLOps — industry interviewers recognize it."},
+      {id:"w9t3",type:"STUDY",title:"Retraining strategies (1 hour)",
+       desc:"Scheduled: retrain every N days — simple, predictable, potentially wasteful. Drift-triggered: retrain when statistical tests fire — efficient, responds to real changes. Performance-triggered: retrain when RMSE on new labeled data exceeds threshold — most direct but requires labels. You'll implement drift-triggered, the most realistic for industrial sensor data."},
+    ]},
+    {id:"w9s2",title:"IDE: Monitoring Pipeline — No Colab This Week",tasks:[
+      {id:"w9t4",type:"CODE",title:"Write src/monitoring.py",
+       desc:"Functions: compute_ks_drift(reference, current) → {'ks_stat':float,'p_value':float,'drift':bool}. compute_psi(reference, current, bins=10) → float. compute_feature_drift(ref_df, curr_df, features) → DataFrame with per-feature drift metrics. flag_drift(drift_df, ks_threshold=0.05, psi_threshold=0.2) → bool. Each function independently testable."},
+      {id:"w9t5",type:"CODE",title:"Write scripts/simulate_drift.py",
+       desc:"Load FD001-trained model. Feed it FD002 data. Compute per-feature KS test comparing FD001 vs FD002 sensor distributions. Print a drift report. Expected result: several sensors show significant drift (p<0.05) because FD002 has different operating conditions. This simulation is what you describe in interviews and the paper."},
+      {id:"w9t6",type:"CODE",title:"Write scripts/retrain_if_drift.py",
+       desc:"Orchestrator: (1) load reference distribution stats, (2) load current data, (3) run drift detection, (4) if flag_drift() → log alert, call training pipeline, save new model, update model_registry.csv with 'retrained_after_drift' note. In production this runs as a daily cron job."},
+      {id:"w9t7",type:"CODE",title:"Optional: Prometheus metrics in FastAPI",
+       desc:"Add prometheus_client metrics to main.py: prediction_count (Counter), prediction_latency_seconds (Histogram), drift_score (Gauge). Expose at GET /metrics. Even without setting up the full Grafana stack, the endpoint demonstrates production-readiness thinking."},
+      {id:"w9t8",type:"COMMIT",title:"Commit monitoring pipeline",
+       desc:"git add src/monitoring.py scripts/simulate_drift.py scripts/retrain_if_drift.py && git commit -m 'feat: KS + PSI drift detection, FD001→FD002 simulation, automated retraining trigger'"},
+    ]},
+   ],
+   dels:["Demonstrated drift: FD001 model detects FD002 distribution shift","Automated retraining trigger — runnable, loggable script","src/monitoring.py with independently testable functions","Strongest MLOps talking point: 'I built a self-healing pipeline'"]
+  },
+
+  {id:10,title:"Documentation, Tests + Paper",
+   obj:"Turn 9 weeks of engineering into a portfolio artifact that communicates its value in 2 minutes. The code is done — now make it undeniable. A recruiter landing on your repo should understand full scope, rigor, and results immediately.",
+   secs:[
+    {id:"w10s1",title:"README.md — Your Shop Window",tasks:[
+      {id:"w10t1",type:"DOC",title:"Write README header + badges + best visual",
+       desc:"Title, 1-sentence description, Python/Docker/License badges. Below badges: your best visualization (attention weights heatmap or multi-model comparison plot). First impressions of GitHub repos form in 5 seconds — the image above the fold determines whether they keep reading."},
+      {id:"w10t2",type:"DOC",title:"Architecture diagram in Mermaid",
+       desc:"Mermaid renders natively on GitHub. Diagram: Sensors → Feature Engineering → Model Training (branching to XGBoost/TCN/LSTM/ROCKET) → MLflow Registry → FastAPI → Docker, with Monitoring branch (Drift Detection → Retraining Trigger → back to Training). Full system at a glance."},
+      {id:"w10t3",type:"DOC",title:"Results section with model comparison table",
+       desc:"Include model_comparison.csv as a Markdown table. Bold the winning model. Add 'Key Insights' subsection: what SHAP revealed about feature importance, what attention weights showed, what the drift simulation demonstrated. This is what recruiters read to know whether you got results, not just ran code."},
+      {id:"w10t4",type:"DOC",title:"Setup & Reproduction section",
+       desc:"Step-by-step: clone, pip install, download dataset (NASA link), place in data/raw/, python src/train_xgboost.py, mlflow ui, docker build + run. Anyone should reproduce your results without asking a single question. If they have to ask, the README is incomplete."},
+    ]},
+    {id:"w10s2",title:"Test Suite",tasks:[
+      {id:"w10t5",type:"CODE",title:"Write tests/test_data_loader.py",
+       desc:"Test: load_cmapss('FD001','train') returns shape (17731, 26). No NaN values. compute_rul() produces non-negative values. Last cycle of each engine has RUL=0. Run: pytest tests/test_data_loader.py -v."},
+      {id:"w10t6",type:"CODE",title:"Write tests/test_feature_pipeline.py",
+       desc:"Test: rolling features add correct number of new columns. Normalization gives [0,1] range for training engines. generate_sequences returns correct array shapes. clip_rul clips at 125 with no values above."},
+      {id:"w10t7",type:"CODE",title:"Write tests/test_api.py",
+       desc:"Use FastAPI's TestClient: GET /health returns 200 + {'status':'ok'}. POST /predict with valid input returns a float RUL in [0, 125]. POST /predict with wrong shape returns 422. GET /metadata returns model version info."},
+      {id:"w10t8",type:"CODE",title:"Run full test suite + fix failures",
+       desc:"pytest tests/ -v. Fix any failures. Add test badge to README. A green test suite signals correctness — future contributors (or you in 6 months) can verify the system works after any change without re-running the full pipeline."},
+    ]},
+    {id:"w10s3",title:"Research Paper Outline",tasks:[
+      {id:"w10t9",type:"DOC",title:"Write 1–2 page paper outline",
+       desc:"Frame as a SYSTEMS paper, not an accuracy paper. Title: 'A Production-Ready Predictive Maintenance Pipeline for Turbofan RUL Estimation: Multi-Model Comparison, Explainability, and Drift Detection'. Sections: Abstract, Introduction, Related Work (cite Saxena 2008, Bai 2018 TCN, Dempster 2020 ROCKET), Methodology, Experiments, Results, Discussion (Bi-LSTM inference caveat, trade-offs), Conclusion."},
+      {id:"w10t10",type:"DOC",title:"Research target venues",
+       desc:"IEEE PHM (Prognostics and Health Management) Workshop, ICML Workshop on ML for Physical Sciences, NeurIPS Workshop on ML for Engineering. Workshop papers are 4–6 pages and appropriate for this scope. The systems framing (drift detection, containerized serving, latency comparison) differentiates from pure accuracy papers dominating these venues."},
+    ]},
+    {id:"w10s4",title:"Final Polish",tasks:[
+      {id:"w10t11",type:"DOC",title:"Clean and re-run all Colab notebooks",
+       desc:"For each notebook: clear all outputs, update imports to match current src/ API, re-run from top to bottom. A notebook that fails to run is worse than no notebook. If imports fail, fix src/ — notebooks import from modules, not the other way."},
+      {id:"w10t12",type:"DOC",title:"Record 3–5 min demo video",
+       desc:"Screen recording: (1) GitHub repo overview, (2) python src/train_xgboost.py with MLflow logging, (3) mlflow ui showing model comparison, (4) docker build + run, (5) curl POST to /predict getting RUL back, (6) attention weight visualization, (7) simulate_drift.py detecting distribution shift. Upload to YouTube (unlisted) or Loom. Link in README."},
+      {id:"w10t13",type:"COMMIT",title:"Final commit + v1.0.0 tag",
+       desc:"Remove debug prints. Verify .gitignore catches all large files. Final commit: 'docs: Comprehensive README, tests, paper outline, demo — project complete'. Then: git tag v1.0.0 && git push origin v1.0.0. The tag marks this project as finished and shipped."},
+    ]},
+   ],
+   dels:["Portfolio-ready GitHub repo — recruiter understands it in 2 minutes","Full test suite passing with pytest tests/ -v","Demo video recorded and linked in README","Research paper outline ready for write-up","Git repo tagged v1.0.0 — project complete"]
+  },
+];
+
+function App() {
+  const [week, setWeek] = useState(1);
+  const [checks, setChecks] = useState({});
+  const [notes, setNotes] = useState({});
+  const [openNotes, setOpenNotes] = useState({});
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      try { const r = await window.storage.get("pmv3-checks"); if (r) setChecks(JSON.parse(r.value)); } catch(_){}
+      try { const r = await window.storage.get("pmv3-notes");  if (r) setNotes(JSON.parse(r.value)); } catch(_){}
+      setReady(true);
+    }
+    load();
+  }, []);
+
+  const toggleCheck = id => {
+    const n = {...checks,[id]:!checks[id]};
+    setChecks(n);
+    window.storage.set("pmv3-checks", JSON.stringify(n)).catch(()=>{});
+  };
+  const updateNote = (id,v) => {
+    const n = {...notes,[id]:v};
+    setNotes(n);
+    window.storage.set("pmv3-notes", JSON.stringify(n)).catch(()=>{});
+  };
+  const toggleNote = id => setOpenNotes(p=>({...p,[id]:!p[id]}));
+
+  const allTasks = WEEKS.flatMap(w=>w.secs.flatMap(s=>s.tasks));
+  const total = allTasks.length;
+  const done  = allTasks.filter(t=>checks[t.id]).length;
+  const pct   = total>0 ? Math.round(done/total*100) : 0;
+
+  const wProg = w => {
+    const ts = w.secs.flatMap(s=>s.tasks);
+    const d  = ts.filter(t=>checks[t.id]).length;
+    return {d, t:ts.length, p:ts.length>0?Math.round(d/ts.length*100):0};
+  };
+
+  const cur = WEEKS.find(w=>w.id===week);
+
+  const S = {
+    wrap:{fontFamily:'var(--font-sans)',fontSize:'13px',color:'var(--text-primary)',
+          height:'100vh',display:'flex',flexDirection:'column',
+          border:'none',borderRadius:'0',overflow:'hidden'},
+    hdr:{padding:'12px 18px',borderBottom:'0.5px solid var(--border)',
+         background:'var(--surface-1)',flexShrink:0},
+    hdrTop:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'},
+    hdrTitle:{fontWeight:500,fontSize:'14px'},
+    hdrSub:{fontSize:'11px',color:'var(--text-muted)',marginTop:'1px'},
+    pbar:{height:'5px',background:'var(--surface-0)',borderRadius:'3px',overflow:'hidden'},
+    pbarFill:(p)=>({height:'5px',width:`${p}%`,background:'linear-gradient(90deg,#3B82F6,#06B6D4)',
+                    borderRadius:'3px',transition:'width 0.3s ease'}),
+    body:{display:'flex',flex:1,overflow:'hidden'},
+    sidebar:{width:'185px',flexShrink:0,borderRight:'0.5px solid var(--border)',
+             overflowY:'auto',background:'var(--surface-0)',padding:'6px 5px'},
+    wBtn:(active)=>({width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:'8px',border:'none',
+                     cursor:'pointer',marginBottom:'3px',transition:'background 0.15s',
+                     background:active?'var(--surface-2)':'transparent',
+                     borderLeft:active?'2px solid #3B82F6':'2px solid transparent'}),
+    wBtnNum:(active)=>({fontSize:'10px',fontWeight:500,letterSpacing:'0.05em',textTransform:'uppercase',
+                         color:active?'#3B82F6':'var(--text-muted)'}),
+    wBtnName:(active)=>({fontSize:'11px',color:active?'var(--text-primary)':'var(--text-secondary)',
+                          marginTop:'1px',lineHeight:'1.35'}),
+    wMiniBar:{height:'3px',background:'var(--border)',borderRadius:'2px',overflow:'hidden',marginTop:'5px'},
+    wMiniFill:(p)=>({height:'3px',width:`${p}%`,background:'#3B82F6',borderRadius:'2px'}),
+    wMiniTxt:{fontSize:'10px',color:'var(--text-muted)',marginTop:'2px'},
+    content:{flex:1,overflowY:'auto',padding:'18px 20px'},
+    wkLabel:{fontSize:'10px',fontWeight:500,color:'#3B82F6',textTransform:'uppercase',
+             letterSpacing:'0.1em',marginBottom:'3px'},
+    wkTitle:{fontSize:'18px',fontWeight:500,marginBottom:'9px'},
+    wkObj:{fontSize:'12px',color:'var(--text-secondary)',lineHeight:'1.65',
+           padding:'9px 13px',background:'var(--surface-1)',
+           borderLeft:'3px solid #3B82F6',borderRadius:'0 8px 8px 0',marginBottom:'18px'},
+    secHead:{fontSize:'11px',fontWeight:500,color:'var(--text-muted)',textTransform:'uppercase',
+             letterSpacing:'0.08em',marginBottom:'9px',paddingBottom:'7px',
+             borderBottom:'0.5px solid var(--border)'},
+    task:(isDone)=>({background:'var(--surface-1)',borderRadius:'10px',padding:'11px 13px',
+                     marginBottom:'6px',opacity:isDone?0.55:1,transition:'opacity 0.2s',
+                     border:`0.5px solid ${isDone?'var(--border-success)':'var(--border)'}`}),
+    taskTop:{display:'flex',gap:'9px',alignItems:'flex-start'},
+    cb:(isDone)=>({width:'16px',height:'16px',borderRadius:'4px',flexShrink:0,marginTop:'1px',
+                   border:isDone?'none':'1.5px solid var(--border-strong)',
+                   background:isDone?'#10B981':'transparent',cursor:'pointer',
+                   display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s'}),
+    badge:(type)=>({fontSize:'9px',fontWeight:700,letterSpacing:'0.07em',padding:'2px 6px',
+                    borderRadius:'4px',color:TM[type].color,background:TM[type].bg,flexShrink:0}),
+    taskTitle:(isDone)=>({fontSize:'12px',fontWeight:500,
+                           color:isDone?'var(--text-muted)':'var(--text-primary)',
+                           textDecoration:isDone?'line-through':'none',marginLeft:'5px'}),
+    taskDesc:{fontSize:'11px',color:'var(--text-secondary)',lineHeight:'1.65',marginTop:'7px'},
+    noteToggle:{background:'none',border:'none',cursor:'pointer',padding:0,marginTop:'7px',
+                fontSize:'11px',color:'var(--text-muted)',display:'flex',alignItems:'center',gap:'4px'},
+    noteArea:{marginTop:'7px',width:'100%',background:'var(--surface-0)',
+              border:'0.5px solid var(--border)',borderRadius:'6px',
+              color:'var(--text-primary)',fontSize:'11px',padding:'8px 10px',
+              resize:'vertical',minHeight:'55px',fontFamily:'var(--font-sans)',lineHeight:'1.6'},
+    dels:{background:'var(--surface-1)',border:'0.5px solid var(--border-warning)',
+          borderRadius:'10px',padding:'13px 15px',marginTop:'6px'},
+    delsTitle:{fontSize:'10px',fontWeight:700,color:'#F59E0B',textTransform:'uppercase',
+               letterSpacing:'0.08em',marginBottom:'9px'},
+    delItem:{display:'flex',gap:'7px',marginBottom:'5px',fontSize:'12px',
+             color:'var(--text-secondary)',lineHeight:'1.5',alignItems:'flex-start'},
+  };
+
+  if(!ready) return React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',
+    height:'400px',color:'var(--text-secondary)',fontSize:'13px'}},'Loading your planner...');
+
+  return React.createElement('div',{style:S.wrap},
+
+    // HEADER
+    React.createElement('div',{style:S.hdr},
+      React.createElement('div',{style:S.hdrTop},
+        React.createElement('div',null,
+          React.createElement('div',{style:S.hdrTitle},'Predictive Maintenance — Project Planner'),
+          React.createElement('div',{style:S.hdrSub},'NASA C-MAPSS · Turbofan RUL · ML Engineering Flagship')
+        ),
+        React.createElement('div',{style:{textAlign:'right'}},
+          React.createElement('span',{style:{fontWeight:500,fontSize:'16px'}},pct+'%'),
+          React.createElement('div',{style:{fontSize:'11px',color:'var(--text-muted)'}},done+'/'+total+' tasks')
+        )
+      ),
+      React.createElement('div',{style:S.pbar},
+        React.createElement('div',{style:S.pbarFill(pct)})
+      )
+    ),
+
+    // BODY
+    React.createElement('div',{style:S.body},
+
+      // SIDEBAR
+      React.createElement('div',{style:S.sidebar},
+        WEEKS.map(w=>{
+          const {d,t,p}=wProg(w);
+          const active=w.id===week;
+          return React.createElement('button',{key:w.id,style:S.wBtn(active),onClick:()=>setWeek(w.id)},
+            React.createElement('div',{style:S.wBtnNum(active)},'Week '+w.id),
+            React.createElement('div',{style:S.wBtnName(active)},w.title),
+            React.createElement('div',{style:S.wMiniBar},
+              React.createElement('div',{style:S.wMiniFill(p)})
+            ),
+            React.createElement('div',{style:S.wMiniTxt},d+'/'+t)
+          );
+        })
+      ),
+
+      // CONTENT
+      React.createElement('div',{style:S.content},
+
+        React.createElement('div',{style:{marginBottom:'18px'}},
+          React.createElement('div',{style:S.wkLabel},'Week '+cur.id+' of 10'),
+          React.createElement('div',{style:S.wkTitle},cur.title),
+          React.createElement('div',{style:S.wkObj},cur.obj)
+        ),
+
+        cur.secs.map(sec=>
+          React.createElement('div',{key:sec.id,style:{marginBottom:'22px'}},
+            React.createElement('div',{style:S.secHead},sec.title),
+            sec.tasks.map(task=>{
+              const isDone=!!checks[task.id];
+              const noteOpen=!!openNotes[task.id];
+              const hasNote=!!notes[task.id];
+              return React.createElement('div',{key:task.id,style:S.task(isDone)},
+                React.createElement('div',{style:S.taskTop},
+                  React.createElement('div',{style:S.cb(isDone),onClick:()=>toggleCheck(task.id)},
+                    isDone&&React.createElement('svg',{width:9,height:7,viewBox:'0 0 9 7',fill:'none'},
+                      React.createElement('path',{d:'M1 3.5L3.5 6L8 1',stroke:'white',strokeWidth:'1.5',strokeLinecap:'round',strokeLinejoin:'round'})
+                    )
+                  ),
+                  React.createElement('div',{style:{flex:1,minWidth:0}},
+                    React.createElement('div',{style:{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}},
+                      React.createElement('span',{style:S.badge(task.type)},task.type),
+                      React.createElement('span',{style:S.taskTitle(isDone)},task.title)
+                    ),
+                    React.createElement('div',{style:S.taskDesc},task.desc),
+                    React.createElement('button',{style:S.noteToggle,onClick:()=>toggleNote(task.id)},
+                      React.createElement('i',{className:`ti ti-chevron-${noteOpen?'up':'down'}`,style:{fontSize:'12px'},'aria-hidden':'true'}),
+                      noteOpen?'hide note':'add note',
+                      hasNote&&!noteOpen&&React.createElement('span',{style:{width:'5px',height:'5px',borderRadius:'50%',background:'#3B82F6',display:'inline-block'}})
+                    ),
+                    noteOpen&&React.createElement('textarea',{style:S.noteArea,
+                      value:notes[task.id]||'',
+                      onChange:e=>updateNote(task.id,e.target.value),
+                      placeholder:'Notes, blockers, links, learnings...'
+                    })
+                  )
+                )
+              );
+            })
+          )
+        ),
+
+        // DELIVERABLES
+        React.createElement('div',{style:S.dels},
+          React.createElement('div',{style:S.delsTitle},
+            React.createElement('i',{className:'ti ti-flag-2',style:{fontSize:'12px',marginRight:'5px'},'aria-hidden':'true'}),
+            'Week '+cur.id+' deliverables'
+          ),
+          cur.dels.map((d,i)=>
+            React.createElement('div',{key:i,style:S.delItem},
+              React.createElement('span',{style:{color:'#F59E0B',flexShrink:0}},'▸'),
+              React.createElement('span',null,d)
+            )
+          )
+        ),
+        React.createElement('div',{style:{height:'16px'}})
+      )
+    )
+  );
+}
+
+</script>
+  <script>
+    ReactDOM.render(React.createElement(App), document.getElementById('root'));
+  </script>
+</body>
+</html>
