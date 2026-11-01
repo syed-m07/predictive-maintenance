@@ -1,152 +1,104 @@
 ================================================================================
-C-MAPSS Turbofan Engine Degradation Dataset
+DATA MANIFEST — NASA C-MAPSS Turbofan Engine Degradation Simulation Data Set
 ================================================================================
+Raw data is NOT committed to git (data/raw/ is gitignored). This file is the
+contract that lets anyone reproduce the exact same data/raw/ folder.
+All numbers below were VERIFIED on the downloaded files on 2026-11-01.
 
-DATASET NAME:
-  NASA Commercial Modular Aero-Propulsion System Simulation (C-MAPSS)
-  Turbofan Engine Degradation Simulation Data Set
+--------------------------------------------------------------------------------
+SOURCE
+--------------------------------------------------------------------------------
+Original publisher : NASA Ames Prognostics Center of Excellence (PCoE),
+                     "Turbofan Engine Degradation Simulation Data Set"
+Download used      : Kaggle dataset "behrad3d/nasa-cmaps" (version 1) via kagglehub
+Reference paper    : A. Saxena, K. Goebel, D. Simon, N. Eklund, "Damage Propagation
+                     Modeling for Aircraft Engine Run-to-Failure Simulation",
+                     Proc. 1st Int. Conf. on Prognostics and Health Management
+                     (PHM08), Denver CO, 2008. DOI: 10.1109/PHM.2008.4711414
 
-DESCRIPTION:
-  Simulated turbofan engine run-to-failure data. Each engine starts in a
-  healthy state and degrades over time until failure. Sensor readings and
-  operating conditions are recorded at each cycle of engine operation.
-  This dataset is the de-facto benchmark for Remaining Useful Life (RUL)
-  prediction research in predictive maintenance.
+--------------------------------------------------------------------------------
+HOW TO REPRODUCE data/raw/
+--------------------------------------------------------------------------------
+1. Activate the project venv (Python 3.12) with requirements.txt installed.
+2. Download (a free Kaggle login may be requested the first time):
+     python -c "import kagglehub; print(kagglehub.dataset_download('behrad3d/nasa-cmaps'))"
+   It prints a cache folder. The files are inside a NESTED  CMaps/  subfolder.
+3. Copy these 13 files from <printed folder>/CMaps/ into data/raw/:
+     train_FD001..4.txt, test_FD001..4.txt, RUL_FD001..4.txt, readme.txt
+   Do NOT copy:
+     x.txt                               - 218 unexplained numbers, not part of
+                                           NASA's dataset, matches no RUL file
+     Damage Propagation Modeling.pdf     - the reference paper (copyrighted;
+                                           good reading, but not data)
+4. Verify with the SHA-256 checksums below (Git Bash: cd data/raw && sha256sum -c ../sha256sums.txt)
+   and the expected shapes table.
 
-SOURCE:
-  Original NASA CMAPSS Repository:
-    https://www.nasa.gov/dspace/ames/114700
-  
-  Alternative access (easier):
-    https://github.com/InfiniteLife/CMAPSS_Dataset
-    or search "NASA C-MAPSS dataset" on Kaggle
+--------------------------------------------------------------------------------
+FILE FORMAT  (the gotchas)
+--------------------------------------------------------------------------------
+- Plain text, whitespace separated, NO header row, TRAILING SPACES on each line.
+  Read with:  pd.read_csv(path, sep=r"\s+", header=None, names=COLUMNS)
+  Using sep=" " gives 28 columns (2 extra all-NaN columns) - verified.
+- 26 columns:
+     1  unit_id      engine number within that file
+     2  cycle        operating cycle, starts at 1
+     3-5  op1..op3   operational settings (altitude / Mach / throttle-type inputs)
+     6-26 s1..s21    21 sensor measurements
+  (readme.txt says "sensor measurement 26" - that is a typo in NASA's readme;
+   there are 21 sensors.)
+- readme.txt is not UTF-8: open it with encoding="latin-1".
+- RUL_FD00X.txt: one integer per TEST engine (in unit_id order) = the true number
+  of remaining cycles AFTER the last cycle present in test_FD00X.txt.
 
-REFERENCE PAPER:
-  Saxena, A., Goebel, K., Simon, D., & Eddington, N. (2008).
-  "Damage propagation modeling for aircraft engine run-to-failure simulation."
-  In 2008 International Conference on Prognostics and Health Management.
-  DOI: 10.1109/PHM.2008.4711414
+--------------------------------------------------------------------------------
+SEMANTICS
+--------------------------------------------------------------------------------
+- TRAIN engines run from healthy until FAILURE  ->  RUL label for each row is
+  computed as  max_cycle(unit) - cycle  (last row of each engine has RUL = 0).
+- TEST engines are CUT OFF some time before failure. Their RUL is known ONLY at
+  the last observed cycle (from RUL_FD00X.txt). Test RUL must never be computed
+  from max(cycle) - those engines did not fail.
 
-================================================================================
-DATASET SUBSETS
-================================================================================
+--------------------------------------------------------------------------------
+VERIFIED SHAPES AND ENGINE LIFETIMES (cycles per engine: min / mean / max)
+--------------------------------------------------------------------------------
+Subset Split  Rows    Engines  Lifetime min/mean/max  Conditions  Fault modes
+FD001  train  20631   100      128 / 206.3 / 362      1           1 (HPC)
+FD001  test   13096   100       31 / 131.0 / 303
+FD002  train  53759   260      128 / 206.8 / 378      6           1 (HPC)
+FD002  test   33991   259       21 / 131.2 / 367
+FD003  train  24720   100      145 / 247.2 / 525      1           2 (HPC + fan)
+FD003  test   16596   100       38 / 166.0 / 475
+FD004  train  61249   249      128 / 246.0 / 543      6           2 (HPC + fan)
+FD004  test   41214   248       19 / 166.2 / 486
+No NaN values in any file.
 
-Four separate training/test scenarios (FD001, FD002, FD003, FD004):
+NOTE: NASA's readme.txt says FD004 has 248 train / 249 test engines. The actual
+files contain 249 train / 248 test (RUL_FD004.txt has 248 lines). Trust the files.
+NOTE: shortest test engines - FD001: 31 cycles (>= our 30-cycle window, so no
+padding is needed), FD002: 21, FD004: 19 (padding IS needed for those).
 
-FD001 (SIMPLEST):
-  - Operating conditions: 1 (single stable condition)
-  - Fault modes: 1 (single degradation pattern)
-  - Engines: 100 train, 100 test
-  - File: train_FD001.txt, test_FD001.txt
-  - Use this first — it's the baseline everyone compares against
+--------------------------------------------------------------------------------
+PROJECT USAGE
+--------------------------------------------------------------------------------
+- FD001 : primary benchmark - all models trained and compared here.
+- FD002 : drift demo - an FD001-trained model sees 6 operating conditions
+          (covariate shift), detected with KS/PSI, then retraining is triggered.
+- FD003/FD004 : optional extensions.
 
-FD002 (MODERATE):
-  - Operating conditions: 6 (engines run at different settings)
-  - Fault modes: 1
-  - Engines: 260 train, 100 test
-  - File: train_FD002.txt, test_FD002.txt
-  - More realistic because engines operate in varied conditions
-
-FD003 (HARDER):
-  - Operating conditions: 1
-  - Fault modes: 2 (two possible degradation patterns)
-  - Engines: 100 train, 100 test
-  - File: train_FD003.txt, test_FD003.txt
-  - Tests whether model generalizes to unseen failure modes
-
-FD004 (HARDEST):
-  - Operating conditions: 6
-  - Fault modes: 2
-  - Engines: 248 train, 100 test
-  - File: train_FD004.txt, test_FD004.txt
-  - Real-world scenario: variable conditions + multiple failure patterns
-
-PROJECT FOCUS:
-  This project starts with FD001 (establish baseline).
-  Later weeks may include FD002 for generalization testing.
-  N-CMAPSS (newer variant) is mentioned as optional stretch goal.
-
-================================================================================
-COLUMN STRUCTURE
-================================================================================
-
-Each line in train_FD00X.txt and test_FD00X.txt is space-separated (no header):
-
-Column 1:  unit_id (engine ID, 1–100 or 1–248)
-Column 2:  cycle (operational cycle number, starts at 1)
-Column 3:  op_setting_1 (operating condition parameter 1)
-Column 4:  op_setting_2 (operating condition parameter 2)
-Column 5:  op_setting_3 (operating condition parameter 3)
-Columns 6-26: sensor_1 through sensor_21 (21 sensor readings)
-
-Total: 26 columns
-Format: space-separated, float values (integers for unit_id and cycle)
-
-EXAMPLE LINE:
-  1 1 -0.0007 -0.0004 100.0 449.51 555.26 1589.70 1400.60 ...
-
-WHAT EACH COLUMN MEANS:
-  - unit_id: which engine (1 = first engine in training set)
-  - cycle: how many hours/cycles of operation
-  - op settings: throttle %, altitude, temperature (examples; varies by simulator)
-  - sensors: fan speed, fuel pressure, turbine temp, vibration, etc. (varies)
-
-KEY INSIGHT:
-  The 21 sensors measure physical degradation over the engine's lifetime.
-  Some sensors are noisy/constant and should be dropped.
-  Others drift toward failure and are highly predictive of RUL.
-  Part of feature engineering is identifying which.
-
-================================================================================
-DOWNLOAD INSTRUCTIONS
-================================================================================
-
-QUICK START (Recommended):
-
-1. Visit: https://github.com/InfiniteLife/CMAPSS_Dataset
-   (or Kaggle: search "CMAPSS dataset")
-
-2. Download all files:
-   - train_FD001.txt
-   - test_FD001.txt
-   - train_FD002.txt
-   - test_FD002.txt
-   - train_FD003.txt
-   - test_FD003.txt
-   - train_FD004.txt
-   - test_FD004.txt
-
-3. Place them in your repo's data/raw/ directory:
-   predictive-maintenance/
-   └── data/
-       └── raw/
-           ├── train_FD001.txt
-           ├── test_FD001.txt
-           ├── train_FD002.txt
-           ├── test_FD002.txt
-           ├── ... (and so on)
-
-4. Verify: ls -lh data/raw/
-   Each file should be ~2-4 MB. Total ~50 MB for all 4 subsets.
-
-5. Test the loader:
-   python -c "from src.data_loader import load_cmapss; df = load_cmapss('FD001', 'train'); print(df.shape)"
-   Should print: (17731, 26)
-
-DIRECT FROM NASA:
-  Source: https://www.nasa.gov/dspace/ames/114700
-  Select "CMAPSS Dataset" → follow their download links
-  Less convenient but original source.
-
-================================================================================
-NOTES
-================================================================================
-
-- data/raw/ is .gitignored (files too large for Git)
-- This file (data_manifest.txt) documents the process so anyone can
-  reproduce your setup without version-controlling the raw data
-- After downloading, run your data_loader.py to verify format
-- If files don't parse, check for different delimiters (some sources
-  use comma or tab instead of space)
-
-================================================================================
+--------------------------------------------------------------------------------
+SHA-256 CHECKSUMS  (also stored in data/sha256sums.txt)
+--------------------------------------------------------------------------------
+a19c8ec94931949d0485bdc35118206e9c81c4547b422efb9cf86f4ceddbceca  RUL_FD001.txt
+c851dd96a6ea6998d3c4a8f834d3c8013aa90e93a6ed950dc826ad0655b2906b  RUL_FD002.txt
+df1e0566306b174a2de41c67a3e7a51877889598b78643fc3e5685259091b7cb  RUL_FD003.txt
+196b836b85a95ac7fdbbf29c5fdf1657382eafa445644d114ffaaf50dc2975e1  RUL_FD004.txt
+4f5270554b775c67e73aff383c5436fd329d6e4cc3d3a116913276fae511269b  readme.txt
+3cda7109ce17bafb5443f2ac926cfcf88154b941b8c4cf95eb55d1ddd6f52851  test_FD001.txt
+de7b5bf7e998a985c378488480528b7c02cff1406a46740def362dda8d9b4e02  test_FD002.txt
+299babd63c8d987cef079c4a425429f33b3a34797d803bbe2ad48c29dbd0d790  test_FD003.txt
+1dc675fff0624bac10786927c6715b37d1297657137400d2b1a3138d777a3ba5  test_FD004.txt
+963b5e22825b34d8b21c69e1aeb4af3e647050eb672ee8834ba4b5d91d2de0f8  train_FD001.txt
+dac6c4dbc4e7c1bdeb5747da3d313d05c395bb99801b44a002b26a2ba13d788f  train_FD002.txt
+2abbe9968cc5e8eb091980f51b20f62bb4127336d3482cb52071d53bf23329e2  train_FD003.txt
+27ef6160b6a1dcb2613a88de9c239f763b223f02cdc41dc5cdedc5dc189b6218  train_FD004.txt
