@@ -31,6 +31,9 @@ REGISTRY_PATH = MODELS_DIR / "model_registry.csv"
 MLFLOW_TRACKING_URI = os.environ.get(
     "MLFLOW_TRACKING_URI", f"sqlite:///{(ROOT_DIR / 'mlflow.db').as_posix()}"
 )
+# Where run artifacts (plots, metadata) are stored. Pinned to an absolute path: with a SQLite
+# backend MLflow otherwise defaults to ./mlruns relative to the CURRENT directory.
+MLFLOW_ARTIFACT_ROOT = Path(os.environ.get("MLFLOW_ARTIFACT_ROOT", ROOT_DIR / "mlruns"))
 
 # ---------------------------------------------------------------- reproducibility
 SEED = 42
