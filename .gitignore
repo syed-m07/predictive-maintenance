@@ -1,11 +1,37 @@
-.commandcode
-data/raw/
-data/processed/
-trained_models/*.pkl
-trained_models/*.pt
+# ---- data (too large / reproducible from data_manifest.txt) ----
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# ---- model artifacts (reproducible by running the training scripts) ----
+# Only the registry CSV is versioned; it records which model produced which numbers.
+trained_models/*
+!trained_models/model_registry.csv
+!trained_models/.gitkeep
+
+# ---- experiment tracking (MLflow: sqlite run DB + artifact folder) ----
 mlruns/
-ipynb_checkpoints/
+mlflow.db
+mlartifacts/
+
+# ---- python ----
 __pycache__/
-*pyc 
-.env
+*.py[cod]
+.pytest_cache/
+*.egg-info/
 venv/
+.venv/
+
+# ---- notebooks ----
+.ipynb_checkpoints/
+
+# ---- local / secrets / editor ----
+.env
+.commandcode
+.vscode/
+.idea/
+*.log
+
+# ---- private notes (full unredacted handoff stays local) ----
+docs/HANDOFF_private.md
