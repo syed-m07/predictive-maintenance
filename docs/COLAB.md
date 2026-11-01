@@ -1,8 +1,9 @@
 # Training on Google Colab (free T4 GPU)
 
-**Status:** plan, written 2026-11-01. It becomes a ready-to-run notebook (`notebooks/colab_train.ipynb`)
-once the first deep-model training script (`src/train_tcn.py`) exists. Steps marked ⚠ get
-verified on the first real run and this file is updated.
+**Status (2026-11-02):** ready. Run **`notebooks/colab_train.ipynb`** in Colab. It performs every step
+below, in order, and stops early if the GPU is missing. Bring the results home with
+`scripts/import_colab_outputs.py` (step 8). The local parts (training scripts, tuning, the import
+script) are tested. Steps marked ⚠ depend on Colab's environment and get confirmed on the first real run.
 
 ## What runs where
 
@@ -58,12 +59,15 @@ Nothing is copy-pasted into notebook cells. The scripts pick the device automati
    !python -m src.train_tcn             # final model with best params
    !cp -r trained_models/* {OUT}/trained_models/
    ```
-8. **Bring results home:** download `pm-outputs/trained_models/*` (weights + scaler + best-params
-   JSON) into the local `trained_models/` / `configs/`, and download `mlflow_colab.db`.
-   View Colab runs locally with:
-   `mlflow ui --backend-store-uri sqlite:///mlflow_colab.db`
-   The registry rows (`model_registry.csv`) are appended on Colab and copied back. The CSV is
-   committed, so the comparison table always includes the Colab-trained models.
+8. **Bring results home:** the notebook's last cell writes `pm-outputs/colab_outputs_<time>.zip`
+   (new model bundles, `configs/tcn*.json` / `lstm*.json`, their `results/` figures, and ONLY the
+   new registry rows). Download it, then in the local repo run
+   `venv\Scripts\python scripts\import_colab_outputs.py path\to\colab_outputs_<time>.zip`.
+   It extracts the files and **appends** the rows. It never overwrites the local registry, and it
+   refuses paths outside trained_models/configs/results, existing bundles, and duplicate rows.
+   Colab's MLflow runs stay in `pm-outputs/mlflow_colab.db`
+   (`mlflow ui --backend-store-uri sqlite:///mlflow_colab.db` shows their params and metrics; their
+   artifact links point to Drive paths, so the figures are viewed from `results/` instead).
 9. **Locally:** run `scripts/compare_models.py`. It evaluates every model on the same FD001 test
    set on CPU, so latency numbers are comparable across models.
 
@@ -73,4 +77,6 @@ Nothing is copy-pasted into notebook cells. The scripts pick the device automati
   SQLite file on Drive, so an interrupted study **resumes** instead of starting over.
 - GPU results are not bit-for-bit reproducible (cuDNN nondeterminism). Seeds keep them close; this is
   noted in the README.
-- Latency is always measured **locally on CPU**, never on Colab's GPU, so the comparison is fair.
+- Latency: training scripts time inference on CPU, but on Colab that is *Colab's* CPU. The final
+  comparison (`scripts/compare_models.py`, Block 10) **re-measures every bundle's latency on the
+  local machine**, so all models are timed on identical hardware (V4).
