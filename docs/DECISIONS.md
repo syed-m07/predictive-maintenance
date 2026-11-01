@@ -30,6 +30,8 @@ Sources of truth, in order: this file → [`HANDOFF.md`](HANDOFF.md) → [`pm_pl
 | E5 | MLflow backend = **SQLite** (`mlflow.db`), artifacts in `./mlruns/`. Overridable via the `MLFLOW_TRACKING_URI` env var. | MLflow 3.17 refuses the plain-folder `./mlruns` store ("maintenance mode"). SQLite is the officially recommended local backend. The handoff already listed it as an option. |
 | E6 | Separate `requirements-serve.txt` for the Docker image. | The API needs about 10 packages, not about 25. A smaller image builds faster and has a smaller attack surface. Torch is added to it if a deep model is served (see P4). |
 | E7 | Constants in `src/config.py` (not `configs/config.yaml`). | Importable, type-checked by the editor, one file. `configs/` holds only *generated* artifacts (best-params JSON). |
+| E8 | Added `nbconvert==7.17.2` and `nbformat==5.11.1`. | To re-execute notebooks top to bottom from the CLI (`jupyter nbconvert --execute`), which proves every committed notebook runs and its outputs are current. |
+| E9 | `pytest.ini` sets `pythonpath = .` | So plain `pytest` from the repo root can import `src.*`, with no install step or `sys.path` hacks. |
 
 ## 3. Data decisions
 
@@ -39,6 +41,11 @@ Sources of truth, in order: this file → [`HANDOFF.md`](HANDOFF.md) → [`pm_pl
 | D2 | `x.txt` and the PDF from the Kaggle folder are **not** copied to `data/raw/`. | `x.txt` (218 numbers) isn't part of NASA's dataset and matches no RUL file. The PDF is the reference paper (copyrighted). |
 | D3 | Read files with `sep=r"\s+"`. | Verified: `sep=" "` produces 28 columns (2 all-NaN) because of trailing spaces. |
 | D4 | Trust file contents over NASA's readme for engine counts. | Verified: FD004 has 249 train / 248 test engines; the readme (and HANDOFF.md §4) says the reverse. |
+| D5 | The loader **validates structure on every load**: 26 columns, no NaN, unit_id sorted, and cycles exactly 1, 2, 3 … inside every engine. | Rolling/lag features assume ordered, gap-free cycles. A violating file would produce silently wrong features, so it fails loudly instead. All 8 files pass (verified). |
+| D6 | **Drop list decided by an explicit rule, not by eye** (`src/eda.suggest_drop_cols`): ≤ 2 distinct values **or** within-engine trend < 0.2. On FD001 it yields exactly the planned 10 columns. `tests/test_eda.py` asserts that. | Reproducible and testable. The rule isn't threshold-sensitive: the weakest kept sensor has trend 0.63; the strongest dropped one (s6) 0.09. |
+| D7 | The screen uses **within-engine** trend, not just pooled correlation with RUL. | s9/s14 have weak pooled correlation (−0.32/−0.20) but strong per-engine trends (0.66/0.70). Engines start at different levels and, for s9/s14, move in different directions, so pooling hides the signal. A correlation-only screen would have wrongly dropped them. |
+| D8 | **s9 and s14 kept, with a recorded caveat.** | They carry real per-engine information and are part of the benchmark's standard 14-sensor set. Caveat: they are 96 % correlated with each other, and their trend direction differs between engines (some rise sharply near failure, some drift down). Watch how SHAP weights them. |
+| D9 | **Known consequence of P3 (unclipped test truth):** 11 of the 100 FD001 test engines have true RUL > 125 (max 145). Models trained on clipped labels predict ≤ 125, so up to 20 cycles of error on those engines is unavoidable. | Not a bug; documented so the RMSE isn't misread. The README states it next to the results. |
 
 ## 4. Corrections to the original plan (not shortcuts: the original was wrong)
 
@@ -59,3 +66,6 @@ Full list in HANDOFF.md §7; all applied to planner v4.
 | R1 | Untracked the empty placeholder files `trained_models/xgboost_v1.pkl`, `trained_models/lstm_v1.pt` and `mlruns/.gitkeep`. | They were committed before `.gitignore` existed, so git kept tracking them; the ignore rules never applied. Model files are build outputs, and MLflow creates `mlruns/` itself. |
 | R2 | `.gitignore`: `trained_models/*` except `model_registry.csv`; fixed `.ipynb_checkpoints/` (the dot was missing); added `mlflow.db`, `.pytest_cache/`. | The registry CSV *is* the versioned record of which model produced which numbers; weights are reproducible. |
 | R3 | Commits: conventional prefixes, and the body explains what changed and why. No AI co-author trailer. | The commit history is part of the portfolio and the debugging trail. |
+| R4 | Removed the empty `notebooks/Week1_EDA … Week5_LSTM.ipynb` placeholders. Notebooks follow HANDOFF §9 naming (`01_EDA`, `02_Results_and_Comparison`, `03_SHAP`, `04_Attention`). | All five were 0 bytes. They were slots for the old Colab-lab workflow, which P1 replaced. |
+| R5 | Two `src/` modules beyond the HANDOFF layout: `src/eda.py` (drop-rule statistics) and `src/plotting.py` (one shared figure style). | Keeps notebooks free of logic (P1), makes the drop decision testable, and gives every figure the same colours and chrome. |
+| R6 | Figures are saved to `results/*.png` and committed. Notebooks are committed **with outputs**. | The README and GitHub viewers need the images without re-running anything. Notebooks are re-executed with nbconvert before each commit, so the outputs match the code. |
