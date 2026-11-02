@@ -119,3 +119,23 @@ Latencies are left out on purpose: they were measured on Colab's CPU and are re-
    - Caveat for the write-up: attention weights show where the model *looks*, not *why* it predicts a value. They are not a full explanation (SHAP comes in Block 10).
 
 **Housekeeping:** in `mlflow_colab.db` (outside the repo) the four session-2 runs are tagged `duplicate_of=<original run id>`. A backup taken before tagging is `../mlflow_colab.backup_before_tagging.db`. No run was left in RUNNING state. The pruned trials show as KILLED (as planned in M5).
+
+## E5 · ROCKET (MiniRocket + ridge), local CPU, 2026-11-02, commit `3580b9d`
+
+**Setup:** `python -m src.train_rocket`. The same 30×14 windows, split and scaler as the deep models. 10,000 MiniRocket kernels → 9,996 features → standardised → ridge. α chosen from `logspace(-3, 6, 10)` on the 20 validation engines (DECISIONS K1–K5, DV-003). Laptop CPU (4 logical cores).
+
+**α search** (`results/rocket_alpha_search.png`): validation RMSE falls steadily from 20.80 (α=10⁻³) to **17.37 at α=10⁵**, then rises again (18.32 at 10⁶). The optimum is inside the widened grid. With the planner's grid (max 10³) a scratch run got validation 18.91 / test 17.92, so widening improved test RMSE by 1.5 cycles.
+
+| Model | Val RMSE | **Test RMSE** | MAE | R² | NASA | RMSE clip125 | NASA clip125 | Train |
+|---|---|---|---|---|---|---|---|---|
+| xgboost_tuned (E2) | 14.87 | 17.76 | 12.77 | 0.817 | 671.3 | 16.50 | 626.5 | 20.9 s (CPU) |
+| tcn (default, E3) | 14.75 | 16.67 | 12.24 | 0.839 | 521.0 | 15.35 | 477.0 | 26.1 s (T4) |
+| **rocket** | 17.37 | **16.39** | 13.13 | 0.844 | 425.2 | 14.93 | 372.6 | **97.1 s (CPU)** = transform 9.3 s + ridge/α search 87.2 s |
+| lstm_uni_tuned (E4, best) | 12.89 | 14.25 | 10.53 | 0.883 | 320.9 | 12.91 | 280.9 | 42.3 s (T4) |
+
+**What we learned**
+- **ROCKET beats both XGBoost models and the default TCN, but trails the tuned deep models by ~15 % RMSE** (16.39 vs 14.25–14.30), with no tuning beyond α. Its NASA score (425) is much better than XGBoost's (671).
+- **The planner's story ("300× faster than LSTM, within 5 %") does not hold here, and the README must not claim it.** Measured: ROCKET takes 97 s on the laptop CPU, and **90 % of that is the ridge solve** over ~10,000 features (the kernel transform itself takes only 9 s). The LSTMs trained in 16–42 s, but on a T4 GPU, so the two numbers are not on the same hardware. A rough same-hardware reference: the Bi-LSTM took ~4 s/epoch on this CPU (Block 8 check), i.e. ~3 min for a 45-epoch run, so ROCKET is roughly 2× faster on CPU, not 300×. The honest, still useful MLOps point is that **ROCKET needs no GPU and no hyperparameter study** to reach a competitive score.
+- Its validation RMSE (17.37) is *worse* than its test RMSE (16.39). That is the opposite of the tuned deep models, and is consistent with ROCKET having been selected on only one parameter (little selection overfit).
+- Error pattern (`results/rocket_test_predictions.png`): it **over-predicts the engines closest to failure** (true RUL 10–40, predicted ~40). These are late predictions, the costly kind under the NASA score.
+- Possible follow-up, not done: fewer kernels (e.g. 2,000–5,000) would cut the ridge time roughly with the square of the feature count. That is a speed/accuracy trade-off worth measuring for the paper.
