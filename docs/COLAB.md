@@ -75,8 +75,23 @@ Nothing is copy-pasted into notebook cells. The scripts pick the device automati
 
 - Free Colab sessions disconnect after ~90 min idle / ~12 h max. Optuna studies are stored in a
   SQLite file on Drive, so an interrupted study **resumes** instead of starting over.
-- GPU results are not bit-for-bit reproducible (cuDNN nondeterminism). Seeds keep them close; this is
-  noted in the README.
+- GPU reproducibility, measured: on 2026-11-02 all four LSTM models were trained twice, on two
+  different Colab machines (after a reconnect), and gave **identical** test metrics to 4 decimals
+  (EXPERIMENTS E4). cuDNN can in principle be nondeterministic, so treat "identical" as observed,
+  not guaranteed.
+- **After a disconnect / "No module named 'src'":** the Python session was reset and the working
+  folder is no longer the repo. Trained bundles live on the Colab machine's disk (only MLflow and
+  Optuna databases are on Drive), so **check before re-running step 3** (step 3 starts with
+  `rm -rf predictive-maintenance`):
+  `!ls /content/predictive-maintenance/trained_models`
+  - Folder exists → do NOT re-run step 3. Run step 2, `%cd /content/predictive-maintenance`, set the
+    step-6 environment variables again with `SESSION_START = README.md's mtime + 1` and
+    `rows_before = <rows the clone came with>`, then continue with the unfinished cell and step 9.
+  - "No such file" → new machine: run everything from the top. Finished studies print
+    `50 trials done, running 0 more` and only retrain the tuned model; default runs are retrained
+    (seconds). In the Colab MLflow store, tag the duplicate runs `duplicate_of=<original run id>`.
+  - Download every `colab_outputs_*.zip` the session produced; one may be from before the
+    disconnect. Import only one copy of each model.
 - Latency: training scripts time inference on CPU, but on Colab that is *Colab's* CPU. The final
   comparison (`scripts/compare_models.py`, Block 10) **re-measures every bundle's latency on the
   local machine**, so all models are timed on identical hardware (V4).
