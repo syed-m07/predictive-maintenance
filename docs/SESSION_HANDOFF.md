@@ -1,4 +1,4 @@
-# Session handoff: state of the project on 2026-11-02 (after Block 9)
+# Session handoff: state of the project on 2026-11-02 (after Block 10)
 
 Written for the **next chat session** (a new assistant session or a collaborator). Read this first,
 then the documents it points to. Everything here is also in the repo history; this file only
@@ -11,8 +11,8 @@ gathers it in one place.
 | File | What it holds |
 |---|---|
 | `docs/SESSION_HANDOFF.md` | This file: state, rules, open items. |
-| `docs/DECISIONS.md` | **Every decision and why**: P (project), E (environment), D (data), F (features), V (evaluation), M (deep models), K (ROCKET), R (repo hygiene), plus corrections to the original plan. Authoritative. |
-| `docs/EXPERIMENTS.md` | Every result, with what we learned: reference rows (oracle, mean predictor), E1–E2 XGBoost, E3 TCN, E4 Bi- vs uni-LSTM, E5 ROCKET. |
+| `docs/DECISIONS.md` | **Every decision and why**: P (project), E (environment), D (data), F (features), V (evaluation), M (deep models), K (ROCKET), R (repo hygiene), C (comparison + SHAP), plus corrections to the original plan. Authoritative. |
+| `docs/EXPERIMENTS.md` | Every result, with what we learned: reference rows (oracle, mean predictor), E1–E2 XGBoost, E3 TCN, E4 Bi- vs uni-LSTM, E5 ROCKET, E6 comparison with bootstrap intervals, E7 SHAP. |
 | `docs/DEVIATIONS.txt` | Approved deviations from the original plan (DV-002: 80/20 for final models; DV-003: ROCKET α grid). Rule: none without the owner's approval. |
 | `docs/COLAB.md` | How to train on Colab, import results, and recover from a disconnect. |
 | `docs/pm_planner_v4.html` | The owner's corrected planner (the tick list). The original is `docs/pm_planner_fixed.html`. |
@@ -39,7 +39,7 @@ gathers it in one place.
 
 ## 3. What is done
 
-**Blocks 1–9 of the plan are complete. 74 tests pass. Working tree clean, last commit `cf64739`.**
+**Blocks 1–10 of the plan are complete. 89 tests pass.** Check `git log` for the latest commit.
 
 | Block | Result |
 |---|---|
@@ -50,6 +50,7 @@ gathers it in one place.
 | 7 TCN (Colab) | causal TCN, tested; tuned 14.30 (E3) |
 | 8 LSTMs (Colab) | Bi + uni with Bahdanau attention, 50 trials each; attention heatmaps (E4) |
 | 9 ROCKET (local) | MiniRocket + ridge, α on validation engines (E5) |
+| 10 Comparison + SHAP (local) | `scripts/compare_models.py` (protocol check, re-score, local re-timing, bootstrap CIs + paired test, multi-model plot) (E6); `scripts/shap_analysis.py` (Tree + Gradient SHAP, per-sensor agreement) (E7); `src/models/loader.py` loads any bundle (basis for the API) |
 
 **Current results on the FD001 test set (100 engines, unclipped truth, sorted by test RMSE):**
 
@@ -68,7 +69,8 @@ gathers it in one place.
 
 **Headline findings so far** (details in EXPERIMENTS):
 - Deep models on raw windows beat XGBoost on hand-built features: −19 % RMSE, −52 % NASA.
-- The top three deep models are **within noise of each other**, so don't call a single winner without uncertainty estimates.
+- **Four deep models are statistically tied for first** (paired bootstrap, E6): lstm_uni_tuned, tcn_tuned, lstm_bi, lstm_bi_tuned. Never name a single winner (C3). Deep vs XGBoost is statistically solid (+3.5 RMSE [+1.1, +5.8]).
+- SHAP (E7): models agree once the correlated group s4/s7/s11/s12 is taken as one (share 0.41 / 0.37 / 0.38). The real disagreement is s3. lstm_uni_tuned's attention is flat, but SHAP shows it relies on recent cycles: attention ≠ attribution.
 - Bidirectionality gives no measurable benefit on FD001. The uni-LSTM matches it with 7× fewer parameters and is causal.
 - `lstm_bi_tuned` had the best validation score but the worst test score among the LSTMs: selection overfit on 20 validation engines.
 - ROCKET: competitive without a GPU or a tuning study, but **not** "300× faster within 5 %". Don't put that planner claim in the README (E5).
@@ -104,20 +106,17 @@ Verification habits that caught real bugs (keep doing them):
 
 ## 5. What remains (in order)
 
-1. **Block 10: comparison + SHAP** (planner w7t6–w7t8). Everything it depends on is now available.
-   - `scripts/compare_models.py`: load every bundle from the registry, **re-time all models on the local CPU** (the Colab latencies were measured on Colab's CPU, decision V4), add the mean-predictor no-skill row, and write `results/model_comparison.csv`.
-   - Multi-model prediction plot on the same test engines.
-   - SHAP for XGBoost (TreeExplainer) and for the best deep model (GradientExplainer / DeepExplainer on windows).
-   - **Open question for the owner:** add bootstrap confidence intervals over the 100 test engines? Recommended, because the top models are within noise of each other.
+1. ~~Block 10: comparison + SHAP~~ **done** (E6, E7, DECISIONS C1–C9). Outputs in `results/model_comparison*.csv|png`, `multi_model_predictions.png`, `shap_*`, `test_predictions_all_models.csv`.
 2. **Block 12: drift detection.** `src/monitoring.py` (KS test + PSI per sensor); `scripts/simulate_drift.py` for FD001 → FD002, **with a no-drift control** (FD001 validation vs FD001 test must NOT alarm); `scripts/retrain_if_drift.py`; experiment `drift-retraining`. FD002 has 6 operating conditions, so drift will be large; explain it.
-3. **Block 11: FastAPI + Docker.** `src/api/schemas.py`, a model-agnostic `model_loader.py` (reads `metadata.json`: `model_type`, `input_kind` tabular vs sequence), `main.py` (health, predict, metrics via prometheus-client), `Dockerfile` + `.dockerignore` using `requirements-serve.txt`. Torch-based models need CPU torch in the image (P4).
-   - Which model(s) to serve is the owner's choice, made **after** Block 10. Unused ones are removed from the image then, and that is logged.
-   - Ask the owner whether Docker Desktop is installed before Docker work.
+3. **Block 11: FastAPI + Docker.** `src/api/schemas.py`, the model-agnostic loader already exists (`src/models/loader.py`, C9; reads `metadata.json`: `model_type`, `input_kind`), `main.py` (health, predict, metrics via prometheus-client), `Dockerfile` + `.dockerignore` using `requirements-serve.txt`. Torch-based models need CPU torch in the image (P4).
+   - **Owner decisions (2026-11-02):** Docker Desktop **is installed**. Serve a **shortlist** of models in one API, with the model chosen per request (the owner first asked for all 9, then chose a shortlist to keep the image smaller than ~1.5–2 GB). **Open: which models are on the shortlist.** Ask the owner, using E6. Then log it as **DV-004** (deviation from "serve one model") and drop unused dependencies from the image (no torch if no deep model, no sktime/numba if no ROCKET).
+   - Proposed design (not yet confirmed by the owner): `GET /models` (shortlist + registry metrics), `POST /predict?model=<name>` (default model if omitted), `POST /predict/compare` (all shortlisted models on one input), Prometheus metrics labelled per model, ROCKET warm-up at startup if served (numba compiles on the first call).
+   - Latency in E6 excludes feature building (C5). Measure XGBoost's 238-feature build per request in the API.
 4. **Block 13:** extra tests (API, monitoring), a final mutation-check pass.
 5. **Block 14: README.**
    - Results table with both metrics (unclipped + clip125).
    - Architecture diagram (Mermaid).
-   - Key insights from E1–E5.
+   - Key insights from E1–E7 (incl. the tied top group and the bootstrap intervals).
    - Caveats:
      - D9: the test truth is unclipped, so compare literature on clip125.
      - Bi-LSTM is not streaming-capable.
@@ -156,5 +155,7 @@ Verification habits that caught real bugs (keep doing them):
   - ✅ w7t3 (rocket_rul.py)
   - ✅ w7t4 (inference timing; done in Block 4: `time_inference`)
   - ✅ w7t5 (commit)
-  - ⬜ w7t6–w7t8 (comparison, multi-model plot, SHAP) come next.
+  - ✅ w7t6 (comparison table; `results/model_comparison.csv`, with CIs)
+  - ✅ w7t7 (multi-model plot; `results/multi_model_predictions.png`)
+  - ✅ w7t8 (SHAP; XGBoost + best deep models). The planner's Week7_*.ipynb notebooks become `03_Results` / `04_SHAP` (R4), built from these scripts in Block 14.
   - The STUDY tasks w7t1–w7t2 are the owner's own.

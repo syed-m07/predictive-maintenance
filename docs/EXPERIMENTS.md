@@ -139,3 +139,55 @@ Latencies are left out on purpose: they were measured on Colab's CPU and are re-
 - Its validation RMSE (17.37) is *worse* than its test RMSE (16.39). That is the opposite of the tuned deep models, and is consistent with ROCKET having been selected on only one parameter (little selection overfit).
 - Error pattern (`results/rocket_test_predictions.png`): it **over-predicts the engines closest to failure** (true RUL 10–40, predicted ~40). These are late predictions, the costly kind under the NASA score.
 - Possible follow-up, not done: fewer kernels (e.g. 2,000–5,000) would cut the ridge time roughly with the square of the feature count. That is a speed/accuracy trade-off worth measuring for the paper.
+
+## E6 · Model comparison with bootstrap intervals (Block 10), local CPU, 2026-11-02
+
+**Setup:** `python -m scripts.compare_models` (DECISIONS C1–C6). All 9 registered models were re-loaded, protocol-checked (same split, same scaler) and re-scored. **Every re-score matched the registry.** Latency was re-measured on the laptop CPU (Intel Kaby Lake, 4 logical CPUs, torch using 2 threads). Intervals: 10,000 bootstrap resamples of the 100 test engines; paired differences against `lstm_uni_tuned`, the lowest test RMSE. Full table: `results/model_comparison.csv`.
+
+| Model | **Test RMSE** [95 % CI] | NASA [95 % CI] | RMSE − best [paired 95 % CI] | Verdict vs best | Latency 1 engine | Params / trees |
+|---|---|---|---|---|---|---|
+| **lstm_uni_tuned** | **14.25** [11.93, 16.51] | **320.9** [204, 481] | — | best (point) | 2.66 ms | 387 k |
+| tcn_tuned | 14.30 [11.93, 16.59] | 324.2 [204, 486] | +0.06 [−1.27, +1.19] | **tie** | 3.15 ms | 141 k |
+| lstm_bi | 14.46 [12.12, 16.71] | 354.8 [219, 534] | +0.22 [−0.93, +1.39] | **tie** | 1.76 ms | 90 k |
+| lstm_bi_tuned | 14.96 [12.44, 17.53] | 475.9 [230, 819] | +0.71 [−0.72, +2.21] | **tie** | 7.53 ms | 2.72 M |
+| lstm_uni | 15.20 [12.77, 17.57] | 400.1 [246, 603] | +0.96 [+0.05, +1.87] | worse (barely) | 1.31 ms | 37 k |
+| rocket | 16.39 [14.21, 18.42] | 425.2 [292, 588] | +2.15 [+0.25, +4.04] | worse | 1.54 ms | 10 k (ridge) |
+| tcn | 16.67 [13.93, 19.31] | 521.0 [301, 804] | +2.42 [+0.76, +3.98] | worse | 2.58 ms | 32 k |
+| xgboost_tuned | 17.76 [14.69, 20.67] | 671.3 [372, 1053] | +3.51 [+1.12, +5.79] | worse | 1.27 ms | 521 trees |
+| xgboost_baseline | 18.05 [15.07, 20.92] | 681.2 [387, 1058] | +3.80 [+1.54, +5.98] | worse | 0.99 ms | 139 trees |
+| mean predictor (no skill) | 43.00 [38.45, 47.28] | 32,772 | +28.75 | worse | — | — |
+
+Latency = median time of `model.predict` for one engine's prepared input. It excludes feature building and windowing (C5). Training times and hardware are in the CSV; they are not comparable across the local CPU and the Colab T4.
+
+**What we learned**
+1. **Four models are statistically tied for first place:** `lstm_uni_tuned`, `tcn_tuned`, `lstm_bi` and `lstm_bi_tuned`. Each paired interval contains 0. For `tcn_tuned` the reference wins in only 56 % of resamples, a coin flip. **The README must say "a group of tied deep models", not name a single winner** (C3).
+2. **Separate intervals are wide (about ±2.3 RMSE)**, wider than every gap among the top six. That is the cost of a 100-engine test set. The paired test is what separates models: ROCKET's interval overlaps the best model's, but the paired test still shows it is worse (+2.15 [+0.25, +4.04]).
+3. **Deep models on raw windows beat XGBoost on engineered features, and this holds up statistically** (+3.5 RMSE [+1.1, +5.8] for the tuned XGBoost). It is the most robust finding of the project so far.
+4. **Tuning helped the uni-LSTM and the TCN; for the uni-LSTM the gain only just clears noise.** `lstm_uni` vs `lstm_uni_tuned`: +0.96 [+0.05, +1.87], with the interval's lower end just above 0. `tcn` vs `tcn_tuned` is clearer (+2.42 vs the best). For the Bi-LSTM, tuning gave nothing (E4).
+5. **On the NASA score the ordering is similar.** `lstm_bi_tuned` is the weakest of the tied group (+155, interval just touching 0). It makes the most costly late errors.
+6. **Latency doesn't separate the models in practice.** Every model predicts one engine in 1–8 ms on a laptop CPU. The slowest is the 2.7 M-parameter `lstm_bi_tuned`. For the API, the deciding factors are accuracy, image size (torch vs not) and causality, not speed.
+7. **Multi-model plot** (`results/multi_model_predictions.png`, engines 76 / 17 / 13): over each engine's history, all 9 models behave almost the same. They sit at the 125 cap while the engine looks healthy, then follow the decline. Their differences show up mainly in the last stretch. ROCKET drops to 0 at the end of engine 76 (an early, safe-side miss). On engine 13 (true RUL 95) every model stays near the cap until about cycle 120, because nothing in the data says "degrading" yet. This is the D9 ceiling in action.
+
+## E7 · SHAP: XGBoost vs the tied best deep models (Block 10), local CPU, 2026-11-02
+
+**Setup:** `python -m scripts.shap_analysis` (DECISIONS C7–C8). Explained: the 100 official test inputs. `xgboost_tuned` with TreeExplainer: exact, additivity gap 1e-4. `lstm_uni_tuned` and `tcn_tuned` with GradientExplainer (200 training windows as background, 1,000 samples): mean additivity gap 1.2 / 1.3 cycles, against predictions spanning 0–125. Compared per sensor via signed grouped SHAP. Numbers: `results/shap_sensor_importance.csv`, `results/shap_rank_agreement.csv`.
+
+| Sensor | xgboost_tuned | lstm_uni_tuned | tcn_tuned |
+|---|---|---|---|
+| s4 | **0.184** | 0.097 | 0.079 |
+| s11 | **0.143** | **0.107** | 0.084 |
+| s9 | 0.107 | 0.088 | 0.094 |
+| s3 | 0.094 | 0.028 | 0.024 |
+| s15 | 0.081 | 0.069 | 0.065 |
+| s7 | 0.038 | 0.088 | **0.109** |
+| s12 | 0.041 | 0.078 | **0.108** |
+| (others: s2 s8 s13 s14 s17 s20 s21) | 0.31 | 0.45 | 0.44 |
+
+Rank agreement (Spearman ρ over 14 sensors): XGBoost–LSTM 0.54, XGBoost–TCN 0.37, LSTM–TCN 0.79. **s11 and s9 are in all three top-5 lists.**
+
+**What we learned**
+1. **The models agree on the signal once correlated sensors are taken into account.** s4, s7, s11 and s12 form one tightly correlated group (pairwise |r| 0.80–0.85 on the training engines, each |r| 0.74–0.78 with RUL). XGBoost gives most of that group's credit to s4 and s11; the deep models spread it over all four. The group's total share is almost the same: **XGBoost 0.41, LSTM 0.37, TCN 0.38**. A tree model picks one of several near-duplicate inputs and SHAP credits the one it picked. So the lower ρ with XGBoost mostly reflects how credit is split inside the group, not a different signal.
+2. **One real disagreement: s3** (9.4 % for XGBoost, ~2.5 % for both deep models). It is less tied to the group (|r| ≈ 0.7). XGBoost uses its 10-cycle rolling mean (`s3_rollmean_10` is its 2nd most important feature, overall and for engine 76). The deep models find little in s3. Worth a sentence in the paper. We don't claim to know why.
+3. **XGBoost's importance is concentrated; the deep models' is spread out.** For XGBoost the top two sensors carry 33 %; for the deep models the top sensor carries ≤ 11 %. Consistent with the deep models summarising all sensors together, while trees split on a few strong ones.
+4. **Where in the window the deep models look** (`results/shap_deep_time_sensor.png`, shared colour scale): both weight the **most recent ~8 cycles** most, with a weaker band at the window's start. The TCN's peak is concentrated on the very last cycle, as expected from its causal convolutions ending there. **Note the contrast with E4:** `lstm_uni_tuned`'s attention was nearly uniform, yet SHAP shows it depends mostly on recent cycles. Attention weights and attributions measure different things (E4 caveat), and here they visibly disagree. Good material for `05_Attention`.
+5. **Waterfall for engine 76** (`results/shap_xgboost_waterfall.png`, true RUL 10, predicted 7.1): starting from the average prediction 86.5, high recent levels of s4, s3, s9 and s11 each pull the prediction down by 3–6 cycles. The remaining 227 features together pull it down by a further 32.5. With 238 correlated features no single one dominates, which is why the per-sensor grouping (C8) is needed for a readable story.
