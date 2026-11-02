@@ -57,4 +57,27 @@ Impact: ROCKET is evaluated at a properly chosen penalty. Same number of grid
   points; ridge time is unchanged.
 
 --------------------------------------------------------------------------------
+[DV-004] 2026-11-02 | APPROVED
+What: The drift demo's no-drift control is FD001 training engines (reference)
+  vs FD001 VALIDATION engines. FD001 validation vs FD001 TEST is kept and
+  reported as a separate "harmless shift" case, not as the control.
+Original plan: HANDOFF section 12, "run FD001-val vs FD001-test as a no-drift
+  control" (it must not alarm).
+Why: measured, that pair DOES alarm (KS 14/14 sensors, PSI > 0.2 on 13,
+  median PSI 0.27). The test engines were cut off before failure, so their
+  readings are mostly healthy early-life ones, while validation engines run to
+  failure. Shown by the script: cutting the validation engines off the same way
+  reproduces the shift against the reference (alarm in 14/20 draws) and then
+  matches the test engines (0/20 alarms, median PSI 0.017). Training vs
+  validation engines (same population, full lifetimes) gives PSI > 0.2 on
+  0 sensors -> a real control.
+  Also approved with it: the per-sensor rule needs KS p<0.05 AND PSI>0.2
+  (alarm at >= 3 sensors). This fits the planned flag_drift(ks_alpha,
+  psi_threshold, min_features=3) signature; KS alone flags 5/14 sensors on the
+  control because of the large, autocorrelated samples.
+Impact: the control passes for the right reason. The FD001-test case becomes
+  an extra finding: an alarm is not the same as harm (the FD001 models score
+  their usual 14-18 RMSE on that batch), so alarms need interpreting.
+
+--------------------------------------------------------------------------------
 (no open proposals)

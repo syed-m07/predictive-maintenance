@@ -191,3 +191,40 @@ Rank agreement (Spearman ρ over 14 sensors): XGBoost–LSTM 0.54, XGBoost–TCN
 3. **XGBoost's importance is concentrated; the deep models' is spread out.** For XGBoost the top two sensors carry 33 %; for the deep models the top sensor carries ≤ 11 %. Consistent with the deep models summarising all sensors together, while trees split on a few strong ones.
 4. **Where in the window the deep models look** (`results/shap_deep_time_sensor.png`, shared colour scale): both weight the **most recent ~8 cycles** most, with a weaker band at the window's start. The TCN's peak is concentrated on the very last cycle, as expected from its causal convolutions ending there. **Note the contrast with E4:** `lstm_uni_tuned`'s attention was nearly uniform, yet SHAP shows it depends mostly on recent cycles. Attention weights and attributions measure different things (E4 caveat), and here they visibly disagree. Good material for `05_Attention`.
 5. **Waterfall for engine 76** (`results/shap_xgboost_waterfall.png`, true RUL 10, predicted 7.1): starting from the average prediction 86.5, high recent levels of s4, s3, s9 and s11 each pull the prediction down by 3–6 cycles. The remaining 227 features together pull it down by a further 32.5. With 238 correlated features no single one dominates, which is why the per-sensor grouping (C8) is needed for a readable story.
+
+## E8 · Drift detection FD001 → FD002 and drift-triggered retraining (Block 12), local CPU, 2026-11-02, commit `94f56eb`
+
+**Setup:** `python -m scripts.simulate_drift`, then `python -m scripts.retrain_if_drift --batch <batch>` (DECISIONS W1–W9, DV-004). Reference: raw readings of the 80 FD001 training engines (16,390 rows). Rule: a sensor drifts if KS p < 0.05 **and** PSI > 0.2; alarm at ≥ 3 sensors. Outputs: `results/drift_report.csv` (per sensor), `drift_summary.csv`, `drift_model_impact.csv`, `drift_psi_by_sensor.png`, `drift_distributions.png`; MLflow experiment `drift-retraining`.
+
+**Detection** (14 sensors each):
+
+| Batch vs FD001 reference | Rows | KS p<0.05 | PSI>0.2 | Drifting (both) | Median PSI | Alarm |
+|---|---|---|---|---|---|---|
+| **FD001 validation engines (no-drift control)** | 4,241 | 5 | 0 | 0 | 0.005 | **no** ✔ |
+| FD001 test engines (cut off before failure) | 13,096 | 14 | 11 | 11 | 0.27 | yes |
+| **FD002 test engines (6 operating conditions)** | 33,991 | 14 | 14 | 14 | **3.00** | **yes** ✔ |
+| Diagnostic: FD001 validation cut off like test, vs reference (20 draws) | ~2,600 | 14 | 6.3 | 6.3 | 0.20 | 14/20 |
+| Diagnostic: the same, vs FD001 test engines | ~2,600 | 13 | 0 | 0 | 0.017 | 0/20 |
+
+**Impact on the FD001 models** (FD001 scaler from their bundles; FD002 truth unclipped; NASA compared per engine because the sum grows with the engine count, V3):
+
+| Model | FD001 test RMSE | FD002 test RMSE | FD002 RMSE vs capped truth | FD002 NASA per engine |
+|---|---|---|---|---|
+| floor: perfect model capped at 125 | 3.74 | 18.32 | 0 | — |
+| no skill: always predict 86.6 | 43.0 | 54.05 | — | — |
+| lstm_uni_tuned (deployed as-is) | 14.25 | **63.65** | 59.75 | 8,015 |
+| xgboost_tuned (deployed as-is) | 17.76 | 48.13 | 37.25 | 266 |
+| **xgboost_retrained** (FD001+FD002, after the alarm) | 18.24 | **30.39** | **18.31** | 74 |
+
+79 % of the FD002 inputs fall outside [0, 1] after the FD001 scaler, i.e. outside anything the models saw in training.
+
+**Retraining run:** the trigger fired on FD002-test (14/14 sensors) and retrained XGBoost on 288 training engines (80 FD001 + 208 FD002; validation: 20 + 52 engines; 734 trees, 53.7 s on the laptop CPU). It was registered as `xgboost_retrained` v1 (`subset = FD001+FD002`, notes `retrained_after_drift`). Its new reference (FD002 training engines) went into its bundle. Re-checking the same batch against the new reference: 0 sensors drift, median PSI 0.01, no alarm. The next scheduled run (`--reference trained_models/xgboost_retrained_v1/reference.npz`) does nothing. The two no-retrain paths were also run: FD001-val → nothing to do; FD001-test → alarm, flagged for review, not retrained (W7).
+
+**What we learned**
+1. **The detector separates the three cases cleanly.** The control is quiet. FD002's covariate shift is huge: median PSI 3.0, about 600× the control and 11× the FD001-test shift. `drift_distributions.png` shows why: six operating conditions split every sensor into separate clusters, and only one of them overlaps FD001's narrow band.
+2. **KS p-values alone would have raised a false alarm on the control** (5/14 sensors). The PSI effect-size requirement is what keeps it quiet (W2–W3).
+3. **"Drift" is not the same as "harm".** FD001-test alarms because its engines were cut off before failure, so their readings are mostly healthy. The diagnostic proves it: cut-off validation engines reproduce the shift and then match the test engines. Yet the FD001 models score their normal 14–18 RMSE on exactly that batch. An input-drift alarm says "the data changed", not "the model broke". That's why the job flags same-regime alarms for review instead of retraining (W7).
+4. **Deploying an FD001 model on FD002 is worse than useless.** The best FD001 model (`lstm_uni_tuned`) scores 63.6 RMSE on FD002, **worse than always predicting a constant (54.1)**, with a catastrophic NASA score (8,015 per engine vs 3.2 on FD001). XGBoost degrades less (48.1). A likely reason, not tested here: a tree ensemble predicts a bounded constant for inputs beyond its training range, while a neural network's output on far out-of-range inputs is unconstrained. This is what the alarm protects against.
+5. **Retraining recovers most of the loss:** FD002 RMSE 48.1 → **30.4**, and 37.2 → **18.3** against capped truth. NASA per engine drops 266 → 74. FD001 accuracy stays about the same (17.76 → 18.24; one model, so no claim either way). Part of the remaining 30.4 is unavoidable under our convention: 57 of the 259 FD002 test engines have true RUL > 125, so even a perfect capped model scores 18.3 (D9, larger here than on FD001's 3.7).
+6. **A pooled reference would make the loop retrain forever** (found in the smoke run, W8). After moving to a new regime, the monitor must compare against what the model now serves.
+7. **Limits:** no operating-condition normalisation (the usual FD002 step in the literature; future work), one retrained model family (XGBoost), and FD002's test split serves as both the "live" batch and the evaluation set. Fine for a demo, but in production the evaluation engines would be ones that failed later.
