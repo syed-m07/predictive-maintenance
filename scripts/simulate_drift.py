@@ -60,7 +60,8 @@ def model_impact(models: list[str]) -> pd.DataFrame:
             m = evaluate_test(truth, predict_kind(model, meta, inputs))
             scaled = test[SENSORS].to_numpy()
             rows.append({"model": name, "test_set": subset, "n_engines": len(truth),
-                         "test_rmse": m["rmse"], "test_mae": m["mae"], "test_r2": m["r2"],
+                         "test_rmse": m["rmse"], "test_rmse_clip125": m["rmse_clip125"],
+                         "test_mae": m["mae"], "test_r2": m["r2"],
                          "nasa": m["nasa"], "nasa_per_engine": m["nasa"] / len(truth),
                          "share_inputs_outside_0_1": float(((scaled < 0) | (scaled > 1)).mean())})
     return pd.DataFrame(rows)

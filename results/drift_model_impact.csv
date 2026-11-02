@@ -1,0 +1,5 @@
+model,test_set,n_engines,test_rmse,test_rmse_clip125,test_mae,test_r2,nasa,nasa_per_engine,share_inputs_outside_0_1
+xgboost_tuned,FD001,100,17.7603,16.5018,12.7749,0.8173,671.2869,6.7129,0.0001
+xgboost_tuned,FD002,259,48.1307,37.2485,39.9056,0.1990,68930.3061,266.1402,0.7944
+lstm_uni_tuned,FD001,100,14.2460,12.9137,10.5329,0.8825,320.9145,3.2091,0.0001
+lstm_uni_tuned,FD002,259,63.6460,59.7514,53.9062,-0.4006,2075772.3442,8014.5650,0.7944

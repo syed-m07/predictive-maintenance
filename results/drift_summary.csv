@@ -1,0 +1,6 @@
+batch,n_ref_rows,n_cur_rows,n_engines,n_features,n_ks_drift,n_psi_drift,n_drift,median_psi,max_psi,drifted_features,alarm
+FD001-val,16390,4241.0000,20,14.0000,5.0000,0.0000,0.0000,0.0052,0.0465,,False
+FD001-test,16390,13096.0000,100,14.0000,14.0000,11.0000,11.0000,0.2705,0.3496,s2 s3 s4 s7 s9 s11 s12 s15 s17 s20 s21,True
+FD002-test,16390,33991.0000,259,14.0000,14.0000,14.0000,14.0000,3.0005,3.2464,s2 s3 s4 s7 s8 s9 s11 s12 s13 s14 s15 s17 s20 s21,True
+"FD001-val cut off like test, vs reference (20 draws)",16390,,20,,14.0000,6.2500,6.2500,0.1993,0.6081,,14/20
+"FD001-val cut off like test, vs FD001-test (20 draws)",13096,,20,,12.9500,0.0000,0.0000,0.0166,0.1609,,0/20
