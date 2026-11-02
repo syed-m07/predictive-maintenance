@@ -228,3 +228,24 @@ Rank agreement (Spearman ρ over 14 sensors): XGBoost–LSTM 0.54, XGBoost–TCN
 5. **Retraining recovers most of the loss:** FD002 RMSE 48.1 → **30.4**, and 37.2 → **18.3** against capped truth. NASA per engine drops 266 → 74. FD001 accuracy stays about the same (17.76 → 18.24; one model, so no claim either way). Part of the remaining 30.4 is unavoidable under our convention: 57 of the 259 FD002 test engines have true RUL > 125, so even a perfect capped model scores 18.3 (D9, larger here than on FD001's 3.7).
 6. **A pooled reference would make the loop retrain forever** (found in the smoke run, W8). After moving to a new regime, the monitor must compare against what the model now serves.
 7. **Limits:** no operating-condition normalisation (the usual FD002 step in the literature; future work), one retrained model family (XGBoost), and FD002's test split serves as both the "live" batch and the evaluation set. Fine for a demo, but in production the evaluation engines would be ones that failed later.
+
+## E9 · Serving: FastAPI in Docker (Block 11), 2026-11-02
+
+**Setup:** `docker build -t pm-api .` then `docker run -p 8000:8000 pm-api` (DECISIONS A1–A8, DV-005). Shortlist: `lstm_uni_tuned` (default), `tcn_tuned`, `xgboost_tuned`. Image `python:3.12-slim` + CPU torch, 1.97 GB as reported by Docker Desktop; the first build was 2.75 GB before switching to `xgboost-cpu` (A8). Container healthy ~10 s after start (models load once, plus one warm-up prediction each).
+
+**End-to-end check over HTTP against the running container:** the raw readings of all 100 FD001 test engines were sent to `/predict/compare`. **All 300 predictions equal the official test predictions** (`results/test_predictions_all_models.csv`; largest difference 0.0005, the file's rounding). The same check runs in-process in `tests/test_api.py`, and is mutation-checked (A2).
+
+**Per-request latency inside the container** (server-side `latency_ms`: preprocessing + prediction, full engine history sent, median over 100 engines; laptop CPU via Docker Desktop):
+
+| Model | Median | p95 | Model-only latency (E6, `model.predict`) |
+|---|---|---|---|
+| lstm_uni_tuned | 5.0 ms | 7.3 ms | 2.7 ms |
+| tcn_tuned | 5.5 ms | 8.3 ms | 3.2 ms |
+| xgboost_tuned | **43.8 ms** | 72.8 ms | 1.3 ms |
+
+**What we learned**
+1. **For XGBoost the cost is the features, not the model.** Building its 238 rolling/lag/EMA features from the raw history takes ~40 ms per request, ~30× its prediction time. The deep models read the raw window and need only scaling. The E6 table (C5) shows model-only latency, so it ranks XGBoost fastest; in the actual service it is the slowest. Both views are reported. A production version would keep running feature state per engine instead of recomputing from history (not done; not needed at these speeds).
+2. **Live drift monitoring works in the service.** After 100 FD001 test requests followed by 259 FD002 requests, `/metrics` showed `drift_score` 1.54 (median PSI) and `drift_alarm` 1.
+3. **Image size is dominated by torch (~0.8 GB).** A shortlist of only `xgboost_tuned` would avoid torch entirely (the loader never imports it, C9), at the cost of the two tied-best models.
+
+**Not done here:** the `/docs` screenshot for the README (planner w8t7) needs a browser. The owner takes it when testing (`http://localhost:8000/docs`).

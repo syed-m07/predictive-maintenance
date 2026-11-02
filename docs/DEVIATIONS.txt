@@ -80,4 +80,22 @@ Impact: the control passes for the right reason. The FD001-test case becomes
   their usual 14-18 RMSE on that batch), so alarms need interpreting.
 
 --------------------------------------------------------------------------------
+[DV-005] 2026-11-02 | APPROVED
+What: The API serves a SHORTLIST of three models in one service, chosen per
+  request: lstm_uni_tuned (default), tcn_tuned, xgboost_tuned. Endpoints
+  /models, /predict?model=<name>, /predict/compare were added to the planned
+  /health, /metadata, /predict, /metrics.
+Original plan: HANDOFF section 11 / DECISIONS P4: serve ONE model (default
+  tuned XGBoost), chosen from the comparison table; remove the others.
+Why: the comparison (E6) found four models statistically tied, so picking
+  one would rest on noise. The owner first asked to serve all 9, then chose a
+  shortlist to keep the image smaller: two tied-best deep models with
+  different architectures (both causal, so usable on streaming data) plus
+  XGBoost as the engineered-feature representative. ROCKET (needs sktime and
+  numba) and the Bi-LSTMs (not causal) are left out.
+Impact: the image needs CPU torch (it would anyway for any deep model). It
+  does not need sktime/numba. The default model is a convenience; the README
+  must not present it as "the winner".
+
+--------------------------------------------------------------------------------
 (no open proposals)

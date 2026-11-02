@@ -1,4 +1,4 @@
-# Session handoff: state of the project on 2026-11-02 (after Block 12)
+# Session handoff: state of the project on 2026-11-02 (after Block 11)
 
 Written for the **next chat session** (a new assistant session or a collaborator). Read this first,
 then the documents it points to. Everything here is also in the repo history; this file only
@@ -11,9 +11,9 @@ gathers it in one place.
 | File | What it holds |
 |---|---|
 | `docs/SESSION_HANDOFF.md` | This file: state, rules, open items. |
-| `docs/DECISIONS.md` | **Every decision and why**: P (project), E (environment), D (data), F (features), V (evaluation), M (deep models), K (ROCKET), R (repo hygiene), C (comparison + SHAP), W (drift + retraining), plus corrections to the original plan. Authoritative. |
-| `docs/EXPERIMENTS.md` | Every result, with what we learned: reference rows (oracle, mean predictor), E1–E2 XGBoost, E3 TCN, E4 Bi- vs uni-LSTM, E5 ROCKET, E6 comparison with bootstrap intervals, E7 SHAP, E8 drift + retraining. |
-| `docs/DEVIATIONS.txt` | Approved deviations from the original plan (DV-002: 80/20 for final models; DV-003: ROCKET α grid; DV-004: drift control + KS-AND-PSI rule). Rule: none without the owner's approval. |
+| `docs/DECISIONS.md` | **Every decision and why**: P (project), E (environment), D (data), F (features), V (evaluation), M (deep models), K (ROCKET), R (repo hygiene), C (comparison + SHAP), W (drift + retraining), A (serving), plus corrections to the original plan. Authoritative. |
+| `docs/EXPERIMENTS.md` | Every result, with what we learned: reference rows (oracle, mean predictor), E1–E2 XGBoost, E3 TCN, E4 Bi- vs uni-LSTM, E5 ROCKET, E6 comparison with bootstrap intervals, E7 SHAP, E8 drift + retraining, E9 serving. |
+| `docs/DEVIATIONS.txt` | Approved deviations from the original plan (DV-002: 80/20 for final models; DV-003: ROCKET α grid; DV-004: drift control + KS-AND-PSI rule; DV-005: serving shortlist). Rule: none without the owner's approval. |
 | `docs/COLAB.md` | How to train on Colab, import results, and recover from a disconnect. |
 | `docs/pm_planner_v4.html` | The owner's corrected planner (the tick list). The original is `docs/pm_planner_fixed.html`. |
 | `docs/HANDOFF.md` | The original project spec (redacted public copy). The full original is `docs/HANDOFF_private.md`, which is **gitignored, never commit it**. |
@@ -39,7 +39,7 @@ gathers it in one place.
 
 ## 3. What is done
 
-**Blocks 1–10 and 12 of the plan are complete. 107 tests pass.** Check `git log` for the latest commit.
+**Blocks 1–12 of the plan are complete. 125 tests pass.** Check `git log` for the latest commit.
 
 | Block | Result |
 |---|---|
@@ -52,6 +52,7 @@ gathers it in one place.
 | 9 ROCKET (local) | MiniRocket + ridge, α on validation engines (E5) |
 | 10 Comparison + SHAP (local) | `scripts/compare_models.py` (protocol check, re-score, local re-timing, bootstrap CIs + paired test, multi-model plot) (E6); `scripts/shap_analysis.py` (Tree + Gradient SHAP, per-sensor agreement) (E7); `src/models/loader.py` loads any bundle (basis for the API) |
 | 12 Drift + retraining (local) | `src/monitoring.py` (KS, PSI, rule KS AND PSI>0.2, ≥3 sensors), `src/drift_data.py`, `scripts/simulate_drift.py`, `scripts/retrain_if_drift.py` (E8). Registered `xgboost_retrained` v1 (subset FD001+FD002) |
+| 11 API + Docker (local) | `src/api/` (schemas, model_loader, drift_monitor, main), `configs/serving.json`, `Dockerfile`, `.dockerignore`, `requirements-serve.txt`, `scripts/make_sample_request.py` (E9). Container reproduces all 300 official test predictions |
 
 **Current results on the FD001 test set (100 engines, unclipped truth, sorted by test RMSE):**
 
@@ -84,6 +85,9 @@ gathers it in one place.
 
 | Problem | Fix / rule now |
 |---|---|
+| Linux `xgboost` wheel pulls 345 MB of nvidia-nccl into the image | `xgboost-cpu` in requirements-serve.txt (A8) |
+| Rejected NaN input crashed the 422 response; numpy ints broke `/metadata` | Custom validation handler without input echo; registry values converted to plain Python (A4) |
+| Docker engine not running | Start Docker Desktop (per-user install: `%LOCALAPPDATA%\Programs\DockerDesktop\Docker Desktop.exe`) |
 | Spec's no-drift control (FD001 val vs test) alarms | Test engines are cut off before failure; control is train vs val engines (DV-004) |
 | KS over-alarms on large correlated samples | Rule needs KS AND PSI > 0.2 (W3) |
 | Smoke run (PM_MODELS_DIR redirected) wrote a file into the repo | Loader resolves registry paths against MODELS_DIR.parent (fixed + test) |
@@ -114,7 +118,7 @@ Verification habits that caught real bugs (keep doing them):
 
 1. ~~Block 10: comparison + SHAP~~ **done** (E6, E7, DECISIONS C1–C9). Outputs in `results/model_comparison*.csv|png`, `multi_model_predictions.png`, `shap_*`, `test_predictions_all_models.csv`.
 2. ~~Block 12: drift detection~~ **done** (E8, W1–W9, DV-004). Old plan text for reference: `src/monitoring.py` (KS test + PSI per sensor); `scripts/simulate_drift.py` for FD001 → FD002, **with a no-drift control** (FD001 validation vs FD001 test must NOT alarm); `scripts/retrain_if_drift.py`; experiment `drift-retraining`. FD002 has 6 operating conditions, so drift will be large; explain it.
-3. **Block 11: FastAPI + Docker.** `src/api/schemas.py`, the model-agnostic loader already exists (`src/models/loader.py`, C9; reads `metadata.json`: `model_type`, `input_kind`), `main.py` (health, predict, metrics via prometheus-client), `Dockerfile` + `.dockerignore` using `requirements-serve.txt`. Torch-based models need CPU torch in the image (P4).
+3. ~~Block 11: FastAPI + Docker~~ **done** (E9, A1–A8, DV-005). Remaining: the `/docs` screenshot for the README (owner, needs a browser). Old plan text for reference: `src/api/schemas.py`, the model-agnostic loader already exists (`src/models/loader.py`, C9; reads `metadata.json`: `model_type`, `input_kind`), `main.py` (health, predict, metrics via prometheus-client), `Dockerfile` + `.dockerignore` using `requirements-serve.txt`. Torch-based models need CPU torch in the image (P4).
    - **Owner decisions (2026-11-02):** Docker Desktop **is installed**. Serve a **shortlist** of models in one API, with the model chosen per request (the owner first asked for all 9, then chose a shortlist to keep the image smaller than ~1.5–2 GB). **Open: which models are on the shortlist.** Ask the owner, using E6 (recommended: lstm_uni_tuned + tcn_tuned + xgboost_tuned; xgboost_retrained is also available for a FD002 demo). Then log it as **DV-005** (deviation from "serve one model") and drop unused dependencies from the image (no torch if no deep model, no sktime/numba if no ROCKET).
    - Proposed design (not yet confirmed by the owner): `GET /models` (shortlist + registry metrics), `POST /predict?model=<name>` (default model if omitted), `POST /predict/compare` (all shortlisted models on one input), Prometheus metrics labelled per model, ROCKET warm-up at startup if served (numba compiles on the first call).
    - Latency in E6 excludes feature building (C5). Measure XGBoost's 238-feature build per request in the API.
@@ -166,10 +170,18 @@ Verification habits that caught real bugs (keep doing them):
   - ✅ w7t7 (multi-model plot; `results/multi_model_predictions.png`)
   - ✅ w7t8 (SHAP; XGBoost + best deep models). The planner's Week7_*.ipynb notebooks become `03_Results` / `04_SHAP` (R4), built from these scripts in Block 14.
   - The STUDY tasks w7t1–w7t2 are the owner's own.
+- **Week 8:**
+  - ✅ w8t3 (schemas.py)
+  - ✅ w8t4 (model_loader.py)
+  - ✅ w8t5 (main.py)
+  - ✅ w8t6 (Dockerfile)
+  - ✅ w8t7 end-to-end test done; ⬜ the `/docs` screenshot is the owner's
+  - ✅ w8t8 (commit)
+  - The STUDY tasks w8t1–w8t2 are the owner's own.
 - **Week 9:**
   - ✅ w9t4 (`src/monitoring.py`)
   - ✅ w9t5 (`scripts/simulate_drift.py`)
   - ✅ w9t6 (`scripts/retrain_if_drift.py`)
   - ✅ w9t8 (commit)
-  - ⬜ w9t7 (optional Prometheus metrics) comes with the API (Block 11).
+  - ✅ w9t7 (Prometheus `/metrics`, incl. live drift gauges)
   - The STUDY tasks w9t1–w9t3 are the owner's own.
