@@ -1,0 +1,9 @@
+{
+  "_comment": "Models served by the API (owner shortlist, DV-005). Latest registry version of each name is loaded. The default is used when a request names no model; the four best models are statistically tied (EXPERIMENTS E6), so the default is a convenience, not a 'winner'.",
+  "models": ["lstm_uni_tuned", "tcn_tuned", "xgboost_tuned"],
+  "default": "lstm_uni_tuned",
+  "registry": "trained_models/model_registry.csv",
+  "reference": "trained_models/reference_FD001.npz",
+  "drift_window": 1000,
+  "drift_min_rows": 200
+}

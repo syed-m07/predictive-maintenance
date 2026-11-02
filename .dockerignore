@@ -1,0 +1,27 @@
+# Keep the build context small: only src/, configs/serving.json, requirements-serve.txt and the
+# shortlisted bundles are copied (see Dockerfile).
+.git
+.gitignore
+venv/
+.venv/
+data/
+notebooks/
+docs/
+results/
+tests/
+scripts/
+mlruns/
+mlflow.db
+optuna.db
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.vscode/
+.idea/
+.env
+trained_models/*
+!trained_models/model_registry.csv
+!trained_models/reference_FD001.npz
+!trained_models/lstm_uni_tuned_v1/
+!trained_models/tcn_tuned_v1/
+!trained_models/xgboost_tuned_v1/

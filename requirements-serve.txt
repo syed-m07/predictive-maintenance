@@ -1,12 +1,15 @@
-# Slim dependencies for the Docker API image only (python:3.12-slim).
-# No torch / mlflow / optuna / shap: the served model is XGBoost.
-# If a deep model is served instead, add: torch==2.15.0 (CPU index).
+# Dependencies of the Docker API image only (python:3.12-slim). Same pins as requirements.txt.
+# Served models (owner shortlist, DV-005): lstm_uni_tuned, tcn_tuned (torch) + xgboost_tuned.
+# Not here: mlflow, optuna, shap, matplotlib (training/analysis only) and sktime/numba
+# (ROCKET is not served). The CPU-only torch build comes from the extra index.
+--extra-index-url https://download.pytorch.org/whl/cpu
 numpy==2.5.4
 pandas==3.0.6
+scipy==1.18.1
 scikit-learn==1.9.1
-xgboost==3.4.1
 joblib==1.6.0
-pyyaml==6.0.3
+xgboost-cpu==3.4.1     # CPU-only variant: the Linux "xgboost" wheel pulls nvidia-nccl (~345 MB) the API never uses
+torch==2.15.0
 fastapi==0.162.0
 uvicorn[standard]==0.54.0
 pydantic==2.14.2
