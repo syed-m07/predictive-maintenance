@@ -1,0 +1,4 @@
+model_a,model_b,spearman_rho,top5_overlap,top5_shared
+xgboost_tuned,lstm_uni_tuned,0.5429,3,s11 s4 s9
+xgboost_tuned,tcn_tuned,0.367,2,s11 s9
+lstm_uni_tuned,tcn_tuned,0.7934,3,s11 s7 s9
