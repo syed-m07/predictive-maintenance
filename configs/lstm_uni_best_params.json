@@ -1,0 +1,8 @@
+{
+  "hidden_size": 128,
+  "num_layers": 3,
+  "dropout": 0.3391599915244341,
+  "lr": 0.0069782812651260325,
+  "bidirectional": false,
+  "epochs": 50
+}

@@ -86,3 +86,36 @@ MLflow run id). Decisions live in [`DECISIONS.md`](DECISIONS.md).
 - Cost: single-engine inference ~2–3× slower than XGBoost (still ~3 ms). Final timings come from the local re-measurement.
 
 **Housekeeping:** `tcn_tuned`'s registry row says `3584495-dirty`. The **code was clean**: the flag came from the registry CSV, which the preceding `tcn` run had appended to in the same session. Fixed in `6c69f57` (the registry file is now excluded from the check); the recorded row is left as written. In Colab's MLflow store (`mlflow_colab.db`, kept outside the repo) the 28 pruned trials show status FAILED (MLflow labels runs ended by an exception as failed) with tag `state=pruned`. That's cosmetic, and planned to be shown as KILLED from Block 8.
+
+## E4 · Bi-LSTM vs uni-LSTM with attention on Colab T4 (decision P7 ablation), 2026-11-02, commit `a267211`
+
+**Setup:** same protocol as E3 (same windows, split, scaler, training loop, ≤ 50 epochs). Bahdanau attention over the 30-cycle window. Both variants got the **identical** 50-trial Optuna search (hidden 64–256, layers 1–3, dropout 0.1–0.5, lr 1e-4–1e-2, 10 random startup trials, MedianPruner with a 10-epoch warm-up): Bi 18 completed / 32 pruned, uni 26 completed / 24 pruned. Imported from `colab_outputs_20261102_120438.zip`.
+
+**Best trials:** Bi #11 (hidden 256, 2 layers, dropout 0.34, lr 0.0024, **2.72 M parameters**); uni #7 (hidden 128, 3 layers, dropout 0.34, lr 0.0070, 387 k parameters). Configs in `configs/lstm_{bi,uni}_best_params.json`.
+
+| Model | Params | Val RMSE | **Test RMSE** | MAE | R² | NASA | RMSE clip125 | NASA clip125 | Train (T4) |
+|---|---|---|---|---|---|---|---|---|---|
+| tcn_tuned (E3, reference) | — | 13.35 | 14.30 | 10.68 | 0.882 | 324.2 | 12.97 | 282.9 | 24.3 s |
+| lstm_bi (default) | 90 k | 13.86 | 14.46 | 10.62 | 0.879 | 354.8 | 13.27 | 322.5 | 20.5 s |
+| lstm_bi_tuned | 2.72 M | **12.66** | 14.96 | 11.25 | 0.870 | 475.9 | 13.96 | 447.8 | 119.6 s |
+| lstm_uni (default) | 37 k | 13.98 | 15.20 | 11.52 | 0.866 | 400.1 | 13.89 | 358.9 | 16.4 s |
+| **lstm_uni_tuned** | 387 k | 12.89 | **14.25** | **10.53** | **0.883** | **320.9** | **12.91** | **280.9** | 42.3 s |
+
+Latencies are left out on purpose: they were measured on Colab's CPU and are re-measured locally for every model in Block 10.
+
+**Verification done locally**
+- All four bundles reloaded on the laptop CPU reproduce the Colab test RMSE / NASA **exactly** (4 decimals).
+- The bundled scalers equal the local scaler; the validation engine lists match.
+- The Optuna database (`optuna_colab.db`) holds exactly 50 trials per study.
+- **Reproducibility check (accidental):** after a Colab reconnect the owner ran the notebook again on a *new* machine. The default runs were retrained from scratch and the tuned models from the saved best configs, and all four got **identical** test metrics to the first session (`colab_outputs_20261102_132051.zip`, not imported). So seeded GPU training here is repeatable, not just "close".
+
+**What we learned**
+1. **Bidirectionality brings no measurable benefit on FD001.** Default configs: Bi beats uni by 0.74 RMSE. Tuned: uni beats Bi by 0.71. The sign flips, and the gaps are the size that one or two badly predicted test engines can produce (only 100 test engines). The uni-LSTM reaches the same accuracy with 7× fewer parameters (387 k vs 2.72 M) and about 3× less training time. It is also causal, which matters for streaming use: each step only depends on the past.
+2. **Validation-vs-test flip for `lstm_bi_tuned`: the best validation score (12.66) became the worst LSTM test score (14.96).** Choosing the best of 50 trials on only 20 validation engines rewards configs that happen to suit those 20 engines (a "winner's curse" / selection overfit), and the largest model (2.7 M params) is the most able to do that. The uni and TCN tuning did transfer to test. Lesson for the write-up: validation scores of tuned models are optimistic, and only the untouched test set is evidence.
+3. **The top deep models are statistically indistinguishable from each other:** `lstm_uni_tuned` 14.25, `tcn_tuned` 14.30, `lstm_bi` 14.46. Calling one "the winner" would over-read noise. Block 10 should show this honestly (open decision for the owner: add bootstrap confidence intervals over the 100 test engines to the comparison table).
+4. **Attention (`results/lstm_*_attention.png`) behaves very differently per model.** Note that each figure has its own colour scale, so check the colour bar:
+   - **`lstm_bi`** (1 layer) concentrates attention on the newest 1–5 cycles (peak weight ≈ 0.27 against uniform 0.033). 150 cycles before failure, the attention is spread over the middle of the window instead.
+   - **`lstm_uni_tuned`** (3 layers) has nearly **uniform** attention (max ≈ 0.065), i.e. it mostly averages the window. The stacked LSTM already summarises the history in its states, so attention adds little there.
+   - Caveat for the write-up: attention weights show where the model *looks*, not *why* it predicts a value. They are not a full explanation (SHAP comes in Block 10).
+
+**Housekeeping:** in `mlflow_colab.db` (outside the repo) the four session-2 runs are tagged `duplicate_of=<original run id>`. A backup taken before tagging is `../mlflow_colab.backup_before_tagging.db`. No run was left in RUNNING state. The pruned trials show as KILLED (as planned in M5).
