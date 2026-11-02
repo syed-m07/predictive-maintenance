@@ -24,11 +24,16 @@ COLUMNS = [
 
 
 def git_commit() -> str:
-    """Short hash of HEAD, suffixed '-dirty' if there are uncommitted changes to tracked files."""
+    """Short hash of HEAD, suffixed '-dirty' if tracked CODE has uncommitted changes.
+
+    The registry CSV itself is excluded: the pipeline appends to it, so a second training run
+    in the same session would otherwise be flagged dirty although the code is unchanged.
+    """
     try:
         h = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT_DIR,
                            capture_output=True, text=True, check=True).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT_DIR,
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no", "--", ".",
+                                ":(exclude)trained_models/model_registry.csv"], cwd=ROOT_DIR,
                                capture_output=True, text=True, check=True).stdout.strip()
         return h + ("-dirty" if dirty else "")
     except (OSError, subprocess.CalledProcessError):
