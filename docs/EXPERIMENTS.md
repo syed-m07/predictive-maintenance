@@ -111,7 +111,7 @@ Latencies are left out on purpose: they were measured on Colab's CPU and are re-
 
 **What we learned**
 1. **Bidirectionality brings no measurable benefit on FD001.** Default configs: Bi beats uni by 0.74 RMSE. Tuned: uni beats Bi by 0.71. The sign flips, and the gaps are the size that one or two badly predicted test engines can produce (only 100 test engines). The uni-LSTM reaches the same accuracy with 7× fewer parameters (387 k vs 2.72 M) and about 3× less training time. It is also causal, which matters for streaming use: each step only depends on the past.
-2. **Validation-vs-test flip for `lstm_bi_tuned`: the best validation score (12.66) became the worst LSTM test score (14.96).** Choosing the best of 50 trials on only 20 validation engines rewards configs that happen to suit those 20 engines (a "winner's curse" / selection overfit), and the largest model (2.7 M params) is the most able to do that. The uni and TCN tuning did transfer to test. Lesson for the write-up: validation scores of tuned models are optimistic, and only the untouched test set is evidence.
+2. **Validation-vs-test flip for `lstm_bi_tuned`: the best validation score of all LSTMs (12.66) became the worst test score of the three tuned deep models (14.96), behind even the untuned `lstm_bi` (14.46).** *(Corrected 2026-11-02: this line first said "the worst LSTM test score", but the default `lstm_uni` scored worse, 15.20.)* Choosing the best of 50 trials on only 20 validation engines rewards configs that happen to suit those 20 engines (a "winner's curse" / selection overfit), and the largest model (2.7 M params) is the most able to do that. The uni and TCN tuning did transfer to test. Lesson for the write-up: validation scores of tuned models are optimistic, and only the untouched test set is evidence.
 3. **The top deep models are statistically indistinguishable from each other:** `lstm_uni_tuned` 14.25, `tcn_tuned` 14.30, `lstm_bi` 14.46. Calling one "the winner" would over-read noise. Block 10 should show this honestly (open decision for the owner: add bootstrap confidence intervals over the 100 test engines to the comparison table).
 4. **Attention (`results/lstm_*_attention.png`) behaves very differently per model.** Note that each figure has its own colour scale, so check the colour bar:
    - **`lstm_bi`** (1 layer) concentrates attention on the newest 1–5 cycles (peak weight ≈ 0.27 against uniform 0.033). 150 cycles before failure, the attention is spread over the middle of the window instead.
@@ -227,7 +227,7 @@ Rank agreement (Spearman ρ over 14 sensors): XGBoost–LSTM 0.54, XGBoost–TCN
 4. **Deploying an FD001 model on FD002 is worse than useless.** The best FD001 model (`lstm_uni_tuned`) scores 63.6 RMSE on FD002, **worse than always predicting a constant (54.1)**, with a catastrophic NASA score (8,015 per engine vs 3.2 on FD001). XGBoost degrades less (48.1). A likely reason, not tested here: a tree ensemble predicts a bounded constant for inputs beyond its training range, while a neural network's output on far out-of-range inputs is unconstrained. This is what the alarm protects against.
 5. **Retraining recovers most of the loss:** FD002 RMSE 48.1 → **30.4**, and 37.2 → **18.3** against capped truth. NASA per engine drops 266 → 74. FD001 accuracy stays about the same (17.76 → 18.24; one model, so no claim either way). Part of the remaining 30.4 is unavoidable under our convention: 57 of the 259 FD002 test engines have true RUL > 125, so even a perfect capped model scores 18.3 (D9, larger here than on FD001's 3.7).
 6. **A pooled reference would make the loop retrain forever** (found in the smoke run, W8). After moving to a new regime, the monitor must compare against what the model now serves.
-7. **Limits:** no operating-condition normalisation (the usual FD002 step in the literature; future work), one retrained model family (XGBoost), and FD002's test split serves as both the "live" batch and the evaluation set. Fine for a demo, but in production the evaluation engines would be ones that failed later.
+7. **Limits:** the new reference assumes the whole fleet moved to FD002 (FD001 batches alarm against it, PSI ≈ 6.9; notebook 06); no operating-condition normalisation (the usual FD002 step in the literature; future work), one retrained model family (XGBoost), and FD002's test split serves as both the "live" batch and the evaluation set. Fine for a demo, but in production the evaluation engines would be ones that failed later.
 
 ## E9 · Serving: FastAPI in Docker (Block 11), 2026-11-02
 
@@ -249,3 +249,28 @@ Rank agreement (Spearman ρ over 14 sensors): XGBoost–LSTM 0.54, XGBoost–TCN
 3. **Image size is dominated by torch (~0.8 GB).** A shortlist of only `xgboost_tuned` would avoid torch entirely (the loader never imports it, C9), at the cost of the two tied-best models.
 
 **Not done here:** the `/docs` screenshot for the README (planner w8t7) needs a browser. The owner takes it when testing (`http://localhost:8000/docs`).
+
+## E10 · Attention profiles and attention vs SHAP (Block 14, notebook 05), 2026-11-02
+
+**Setup:** `notebooks/05_Attention.ipynb`. Attention weights of the four LSTM bundles on the 100 FD001 test windows,
+averaged per window position. For `lstm_uni_tuned`, the attention profile is compared with the mean |SHAP| per window
+position (GradientExplainer, 200 training windows as background, 200 samples; same settings otherwise as E7), both
+normalised to shares that sum to 1. Figures: `results/attention_profiles.png`, `results/attention_vs_shap.png`.
+
+| Model | Attention on newest 5 cycles | Peak / uniform |
+|---|---|---|
+| lstm_bi (1 layer) | 0.37 | 3.7× |
+| lstm_bi_tuned (2 layers, 256) | 0.17 (= uniform) | **1.0× — exactly uniform** |
+| lstm_uni (1 layer) | **0.68** | **13.2×** |
+| lstm_uni_tuned (3 layers, 128) | 0.12 | 1.8× (toward the *oldest* cycles) |
+
+**What we learned**
+1. **Small default LSTMs use attention to focus on the newest cycles; the tuned, deeper ones barely use it.**
+   `lstm_bi_tuned`'s attention is exactly uniform (every weight 1/30): the attention layer has no effect, and the model
+   predicts from its LSTM states alone. Deeper LSTMs already summarise the window in their states.
+2. **Attention vs SHAP for `lstm_uni_tuned` point in almost opposite directions.** The newest 8 cycles get 19 % of the
+   attention weight (uniform would be 27 %) but carry **46 %** of the SHAP effect. SHAP is U-shaped: highest over the
+   newest cycles, with a smaller bump at the window's start (the starting level that recent change is measured
+   against). Attention peaks at positions 2–5.
+3. **Consequence for the write-up:** attention heatmaps show where a model looks, not what changes its prediction.
+   This refines E4's caveat with a measurement. Use SHAP (or another attribution method) for explanations.

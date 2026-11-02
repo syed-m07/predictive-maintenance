@@ -1,4 +1,4 @@
-# Session handoff: state of the project on 2026-11-02 (after Block 11)
+# Session handoff: state of the project on 2026-11-02 (after Block 14: v1.0.0)
 
 Written for the **next chat session** (a new assistant session or a collaborator). Read this first,
 then the documents it points to. Everything here is also in the repo history; this file only
@@ -12,8 +12,9 @@ gathers it in one place.
 |---|---|
 | `docs/SESSION_HANDOFF.md` | This file: state, rules, open items. |
 | `docs/DECISIONS.md` | **Every decision and why**: P (project), E (environment), D (data), F (features), V (evaluation), M (deep models), K (ROCKET), R (repo hygiene), C (comparison + SHAP), W (drift + retraining), A (serving), plus corrections to the original plan. Authoritative. |
-| `docs/EXPERIMENTS.md` | Every result, with what we learned: reference rows (oracle, mean predictor), E1–E2 XGBoost, E3 TCN, E4 Bi- vs uni-LSTM, E5 ROCKET, E6 comparison with bootstrap intervals, E7 SHAP, E8 drift + retraining, E9 serving. |
+| `docs/EXPERIMENTS.md` | Every result, with what we learned: reference rows (oracle, mean predictor), E1–E2 XGBoost, E3 TCN, E4 Bi- vs uni-LSTM, E5 ROCKET, E6 comparison with bootstrap intervals, E7 SHAP, E8 drift + retraining, E9 serving, E10 attention vs SHAP. |
 | `docs/DEVIATIONS.txt` | Approved deviations from the original plan (DV-002: 80/20 for final models; DV-003: ROCKET α grid; DV-004: drift control + KS-AND-PSI rule; DV-005: serving shortlist). Rule: none without the owner's approval. |
+| `docs/paper_outline.md` | Draft outline of the workshop paper, with every number traced to EXPERIMENTS. |
 | `docs/COLAB.md` | How to train on Colab, import results, and recover from a disconnect. |
 | `docs/pm_planner_v4.html` | The owner's corrected planner (the tick list). The original is `docs/pm_planner_fixed.html`. |
 | `docs/HANDOFF.md` | The original project spec (redacted public copy). The full original is `docs/HANDOFF_private.md`, which is **gitignored, never commit it**. |
@@ -39,7 +40,7 @@ gathers it in one place.
 
 ## 3. What is done
 
-**Blocks 1–12 of the plan are complete. 125 tests pass.** Check `git log` for the latest commit.
+**All blocks (1–14) are complete; tagged `v1.0.0`. 131 tests pass.** Check `git log` for the latest commit.
 
 | Block | Result |
 |---|---|
@@ -53,6 +54,8 @@ gathers it in one place.
 | 10 Comparison + SHAP (local) | `scripts/compare_models.py` (protocol check, re-score, local re-timing, bootstrap CIs + paired test, multi-model plot) (E6); `scripts/shap_analysis.py` (Tree + Gradient SHAP, per-sensor agreement) (E7); `src/models/loader.py` loads any bundle (basis for the API) |
 | 12 Drift + retraining (local) | `src/monitoring.py` (KS, PSI, rule KS AND PSI>0.2, ≥3 sensors), `src/drift_data.py`, `scripts/simulate_drift.py`, `scripts/retrain_if_drift.py` (E8). Registered `xgboost_retrained` v1 (subset FD001+FD002) |
 | 11 API + Docker (local) | `src/api/` (schemas, model_loader, drift_monitor, main), `configs/serving.json`, `Dockerfile`, `.dockerignore`, `requirements-serve.txt`, `scripts/make_sample_request.py` (E9). Container reproduces all 300 official test predictions |
+| 13 Tests | Final pass: comparison-script safety checks added (`tests/test_compare_script.py`); deliberate-bug checks done per block |
+| 14 README + notebooks | `README.md`; notebooks `03_Results_and_Comparison`, `04_SHAP`, `05_Attention`, `06_Drift_and_Serving` (executed, with outputs); 01–02 re-executed; `docs/paper_outline.md` (E10) |
 
 **Current results on the FD001 test set (100 engines, unclipped truth, sorted by test RMSE):**
 
@@ -74,7 +77,7 @@ gathers it in one place.
 - **Four deep models are statistically tied for first** (paired bootstrap, E6): lstm_uni_tuned, tcn_tuned, lstm_bi, lstm_bi_tuned. Never name a single winner (C3). Deep vs XGBoost is statistically solid (+3.5 RMSE [+1.1, +5.8]).
 - SHAP (E7): models agree once the correlated group s4/s7/s11/s12 is taken as one (share 0.41 / 0.37 / 0.38). The real disagreement is s3. lstm_uni_tuned's attention is flat, but SHAP shows it relies on recent cycles: attention ≠ attribution.
 - Bidirectionality gives no measurable benefit on FD001. The uni-LSTM matches it with 7× fewer parameters and is causal.
-- `lstm_bi_tuned` had the best validation score but the worst test score among the LSTMs: selection overfit on 20 validation engines.
+- `lstm_bi_tuned` had the best validation score of all LSTMs but the worst test score of the three tuned deep models (14.96, behind even the untuned lstm_bi at 14.46): selection overfit on 20 validation engines. (An earlier version said "worst among the LSTMs"; lstm_uni at 15.20 is worse.)
 - ROCKET: competitive without a GPU or a tuning study, but **not** "300× faster within 5 %". Don't put that planner claim in the README (E5).
 - Seeded GPU training was exactly repeatable across two Colab machines.
 - Drift (E8): control quiet, FD002 alarms with median PSI 3.0. The FD001 models break on FD002 (lstm_uni_tuned 63.6 RMSE, worse than predicting a constant, 54.1). Retraining → 30.4 (18.3 vs capped truth; the floor is 18.3 because 57 engines have RUL > 125). FD001-test also alarms (engines cut off before failure), yet the models are fine on it: an alarm is not proof of harm.
@@ -123,8 +126,8 @@ Verification habits that caught real bugs (keep doing them):
    - Proposed design (not yet confirmed by the owner): `GET /models` (shortlist + registry metrics), `POST /predict?model=<name>` (default model if omitted), `POST /predict/compare` (all shortlisted models on one input), Prometheus metrics labelled per model, ROCKET warm-up at startup if served (numba compiles on the first call).
    - Latency in E6 excludes feature building (C5). Measure XGBoost's 238-feature build per request in the API.
    - Planner w9t7 (optional Prometheus `/metrics` with `drift_score` gauge) belongs here: `src/monitoring.drift_summary` gives median/max PSI for the gauge.
-4. **Block 13:** extra tests (API, monitoring), a final mutation-check pass.
-5. **Block 14: README.**
+4. ~~Block 13~~ **done.**
+5. ~~Block 14: README~~ **done** (`README.md`). Old checklist for reference:
    - Results table with both metrics (unclipped + clip125).
    - Architecture diagram (Mermaid).
    - Key insights from E1–E7 (incl. the tied top group and the bootstrap intervals).
@@ -133,7 +136,7 @@ Verification habits that caught real bugs (keep doing them):
      - Bi-LSTM is not streaming-capable.
      - Latency hardware.
    - FD002–FD004 benchmarks as **future work** (the owner agreed). FD002 is used only for the drift demo.
-6. Showcase notebooks: `03_Results`, `04_SHAP`, `05_Attention`; demo; paper outline; tag `v1.0.0`.
+6. ~~Showcase notebooks, paper outline, tag `v1.0.0`~~ **done**. **Left for the owner:** the `/docs` screenshot for the README (then add it under "Prediction API"), the 3–5 min demo video (w10t12), choosing target venues (w10t10; candidates in the paper outline), and the STUDY tasks.
 7. Optional / future (ask first): ROCKET kernel-count speed/accuracy curve; FD002–FD004 training on Colab.
 
 ---
@@ -178,6 +181,9 @@ Verification habits that caught real bugs (keep doing them):
   - ✅ w8t7 end-to-end test done; ⬜ the `/docs` screenshot is the owner's
   - ✅ w8t8 (commit)
   - The STUDY tasks w8t1–w8t2 are the owner's own.
+- **Week 10:**
+  - ✅ w10t1 (README header + badges + visual), w10t2 (Mermaid), w10t3 (results), w10t4 (setup), w10t5–w10t8 (tests: 131 pass), w10t9 (paper outline), w10t11 (all local notebooks re-executed; `colab_train` is Colab-only and was already marked done), w10t13 (commit + `v1.0.0`)
+  - ⬜ w10t10 (venue research) and w10t12 (demo video) are the owner's.
 - **Week 9:**
   - ✅ w9t4 (`src/monitoring.py`)
   - ✅ w9t5 (`scripts/simulate_drift.py`)
