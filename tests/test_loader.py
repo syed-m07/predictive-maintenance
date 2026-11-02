@@ -43,3 +43,17 @@ def test_loading_xgboost_never_imports_torch(tmp_path):
             "bad = [m for m in ('torch', 'sktime') if m in sys.modules]; "
             "assert not bad, bad")
     subprocess.run([sys.executable, "-c", code], cwd=ROOT_DIR, check=True)
+
+
+def test_registry_paths_resolve_like_finish_run_writes_them():
+    """finish_run stores bundle paths relative to MODELS_DIR.parent; the loader must agree, also
+    when PM_MODELS_DIR points elsewhere (found by the Block 12 smoke run)."""
+    from src.config import MODELS_DIR
+    from src.models.loader import resolve_bundle_path
+    bundle = MODELS_DIR / "x_v1"
+    assert resolve_bundle_path(bundle.relative_to(MODELS_DIR.parent).as_posix()) == bundle
+    code = ("import os; from pathlib import Path; from src.models.loader import resolve_bundle_path; "
+            "p = resolve_bundle_path('m/x_v1'); assert p == Path(os.environ['PM_MODELS_DIR']).parent / 'm' / 'x_v1', p")
+    import os
+    subprocess.run([sys.executable, "-c", code], cwd=ROOT_DIR, check=True,
+                   env={**os.environ, "PM_MODELS_DIR": str(ROOT_DIR.parent / "elsewhere" / "m")})

@@ -271,3 +271,76 @@ def plot_sensor_agreement(importance, title: str) -> plt.Figure:
     ax.legend(handles[::-1], labels[::-1], loc="lower right")
     fig.tight_layout()
     return fig
+
+
+# --------------------------------------------------------------------------- drift
+BATCH_COLORS = {"FD001-val": BLUE, "FD001-test": ORANGE, "FD002-test": AQUA}
+BATCH_LABELS = {"FD001-val": "FD001 validation engines (no-drift control)",
+                "FD001-test": "FD001 test engines (cut off before failure)",
+                "FD002-test": "FD002 test engines (6 operating conditions)"}
+
+
+def plot_psi_by_sensor(report, psi_threshold: float = 0.2, psi_moderate: float = 0.1) -> plt.Figure:
+    """PSI per sensor for each current batch vs the FD001 training engines (log scale).
+
+    `report` is long-format with columns batch, feature, psi, drift. How to read: bars right of
+    the dashed 0.2 line are significant shifts (dotted 0.1 = moderate). A filled marker at the
+    bar end means KS agreed too, so the sensor counts toward the alarm (>= 3 sensors). Note the
+    log axis: FD002's bars are 10-100x longer than FD001-test's.
+    """
+    sensors = list(dict.fromkeys(report["feature"]))[::-1]
+    batches = list(dict.fromkeys(report["batch"]))
+    h = 0.8 / len(batches)
+    y = np.arange(len(sensors))
+    fig, ax = plt.subplots(figsize=(8.5, 0.5 * len(sensors) + 1.6))
+    for k, b in enumerate(batches):
+        r = report[report["batch"] == b].set_index("feature").loc[sensors]
+        yy = y + (len(batches) - 1 - k - (len(batches) - 1) / 2) * h
+        ax.barh(yy, r["psi"], height=h, color=BATCH_COLORS.get(b, MUTED), label=BATCH_LABELS.get(b, b))
+        flagged = r["drift"].to_numpy(bool)
+        ax.scatter(r["psi"][flagged], yy[flagged], s=14, color=TEXT_PRIMARY, zorder=3)
+    ax.axvline(psi_threshold, color=TEXT_SECONDARY, lw=1, ls="--")
+    ax.axvline(psi_moderate, color=TEXT_SECONDARY, lw=0.8, ls=":")
+    ax.set_xscale("log")
+    ax.set_yticks(y, sensors)
+    ax.set(title="Drift per sensor vs FD001 training engines (PSI, log scale)",
+           xlabel="PSI  (dotted 0.1 = moderate, dashed 0.2 = significant; dot = KS also significant)")
+    ax.grid(axis="y", visible=False)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.07), ncol=1)
+    fig.tight_layout()
+    return fig
+
+
+def plot_drift_distributions(reference, batches: dict, sensors: list[str]) -> plt.Figure:
+    """Sensor distributions: reference (grey fill) vs each batch (lines), density-normalised.
+
+    Top row: the FD001 batches on the FD001 value range - the control overlaps the reference,
+    the cut-off test engines lean toward healthy (early-life) values. Bottom row: FD002 on its
+    full range - six operating conditions spread readings into separate clusters far from the
+    narrow FD001 band (the grey spike). Raw sensor units.
+    """
+    fig, axes = plt.subplots(2, len(sensors), figsize=(3.3 * len(sensors), 6.0))
+    for j, s in enumerate(sensors):
+        ref = reference[s].to_numpy()
+        for row, names in enumerate([["FD001-val", "FD001-test"], ["FD002-test"]]):
+            ax = axes[row, j]
+            vals = [ref] + [batches[n][s].to_numpy() for n in names if n in batches]
+            lo, hi = min(v.min() for v in vals), max(v.max() for v in vals)
+            bins = np.linspace(lo, hi, 60)
+            ax.hist(ref, bins=bins, density=True, color=MUTED, alpha=0.6, label="FD001 training engines (reference)")
+            for n in names:
+                if n in batches:
+                    ax.hist(batches[n][s], bins=bins, density=True, histtype="step", lw=1.6,
+                            color=BATCH_COLORS[n], label=BATCH_LABELS[n])
+            ax.set(title=s if row == 0 else f"{s} (FD002 range)", yticks=[])
+            ax.grid(False)
+    handles, labels = [], []
+    for ax in axes[:, 0]:
+        for hd, lb in zip(*ax.get_legend_handles_labels()):
+            if lb not in labels:
+                handles.append(hd); labels.append(lb)
+    fig.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0.5, -0.06))
+    fig.suptitle("Sensor distributions: FD001 reference vs current batches (density)",
+                 x=0.01, ha="left", fontsize=11, fontweight="bold")
+    fig.tight_layout()
+    return fig

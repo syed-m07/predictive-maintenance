@@ -11,7 +11,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-from src.config import ROOT_DIR
+from src.config import MODELS_DIR
 from src.models.base import RULModel, read_metadata
 
 # model_type -> "module:Class"
@@ -31,9 +31,11 @@ def model_class(model_type: str) -> type[RULModel]:
 
 
 def resolve_bundle_path(path: Path | str) -> Path:
-    """Registry paths are relative to the repo root (e.g. trained_models/tcn_v1)."""
+    """Registry paths are relative to the models folder's PARENT, exactly as finish_run writes
+    them (e.g. trained_models/tcn_v1 -> repo root). Resolving against MODELS_DIR.parent keeps
+    this right when PM_MODELS_DIR redirects a smoke run to a scratch folder."""
     p = Path(path)
-    return p if p.is_absolute() else ROOT_DIR / p
+    return p if p.is_absolute() else MODELS_DIR.parent / p
 
 
 def load_bundle(path: Path | str) -> tuple[RULModel, dict]:
