@@ -79,6 +79,7 @@ def plot_study(study: optuna.Study, prefix: str, n_startup: int = N_STARTUP_TRIA
     from src.plotting import BLUE, MUTED, ORANGE, TEXT_SECONDARY
 
     apply_style()
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     done = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
     nums = np.array([t.number for t in done]); vals = np.array([t.value for t in done])
     paths = []

@@ -24,6 +24,10 @@ from src.tracking import setup_mlflow
 
 STORAGE = os.environ.get("OPTUNA_STORAGE", f"sqlite:///{(ROOT_DIR / 'optuna.db').as_posix()}")
 N_STARTUP_TRIALS = 10
+# Epochs a trial always gets before it can be pruned. LSTMs sit on a plateau (val RMSE ~40,
+# i.e. predicting the mean) for their first ~3 epochs before breaking through (measured on
+# FD001: 40.1 at epoch 3 -> 18.8 at epoch 6), so they get a longer warm-up than the TCN.
+N_WARMUP_EPOCHS = {"tcn": 5, "lstm_bi": 10, "lstm_uni": 10}
 
 TCN_CHANNELS = {"32-32-64": [32, 32, 64], "64-64-64": [64, 64, 64], "32-64-128": [32, 64, 128],
                 "64-64-64-64": [64, 64, 64, 64]}
@@ -37,18 +41,42 @@ def suggest_tcn(trial: optuna.Trial) -> dict:
             "lr": trial.suggest_float("lr", 1e-4, 1e-2, log=True)}
 
 
+def suggest_lstm(trial: optuna.Trial) -> dict:
+    """LSTM search space (planner w6t7): hidden_size, num_layers, dropout, lr. The direction
+    (bi / uni) is fixed by the family, so both variants get the same search (P7)."""
+    return {"hidden_size": trial.suggest_categorical("hidden_size", [64, 128, 192, 256]),
+            "num_layers": trial.suggest_int("num_layers", 1, 3),
+            "dropout": trial.suggest_float("dropout", 0.1, 0.5),
+            "lr": trial.suggest_float("lr", 1e-4, 1e-2, log=True)}
+
+
+FAMILIES = ("tcn", "lstm_bi", "lstm_uni")
+
+
 def _family(name: str):
-    """(model class, search-space fn, training entry point) per model family."""
+    """(model factory, search-space fn, experiment, final-training entry point, arch keys)."""
     if name == "tcn":
         from src.models.tcn_rul import TCNRUL
-        from src.train_tcn import EXPERIMENT, run
-        return TCNRUL, suggest_tcn, EXPERIMENT, run, {"channels", "kernel_size", "dropout"}
-    raise ValueError(f"unknown family {name!r}")
+        from src.train_tcn import ARCH_KEYS, EXPERIMENT, run
+        return TCNRUL, suggest_tcn, EXPERIMENT, run, ARCH_KEYS
+    if name in ("lstm_bi", "lstm_uni"):
+        from functools import partial
+
+        from src.models.lstm_rul import LSTMRUL
+        from src.train_lstm import ARCH_KEYS, EXPERIMENT
+        from src.train_lstm import run as lstm_run
+        bi = name == "lstm_bi"
+
+        def factory(arch, train_cfg, device):
+            return LSTMRUL(arch={**arch, "bidirectional": bi}, train_cfg=train_cfg, device=device)
+
+        return factory, suggest_lstm, EXPERIMENT, partial(lstm_run, variant="bi" if bi else "uni"), ARCH_KEYS
+    raise ValueError(f"unknown family {name!r}; choose from {FAMILIES}")
 
 
 def tune(family: str, subset: str = SUBSET, n_trials: int = 50, epochs: int = 50,
          train_final_model: bool = True, device: str | None = None) -> dict:
-    from src.train_tcn import build_seq_inputs
+    from src.train_sequence import build_seq_inputs
     seed_everything(SEED)
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     Model, suggest, experiment, run_final, arch_keys = _family(family)
@@ -57,7 +85,7 @@ def tune(family: str, subset: str = SUBSET, n_trials: int = 50, epochs: int = 50
     study = optuna.create_study(
         study_name=f"{family}_{subset}", storage=STORAGE, direction="minimize", load_if_exists=True,
         sampler=optuna.samplers.TPESampler(seed=SEED, n_startup_trials=N_STARTUP_TRIALS),
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=N_STARTUP_TRIALS, n_warmup_steps=5))
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=N_STARTUP_TRIALS, n_warmup_steps=N_WARMUP_EPOCHS[family]))
     finished = [t for t in study.trials if t.state in (optuna.trial.TrialState.COMPLETE, optuna.trial.TrialState.PRUNED)]
     remaining = max(0, n_trials - len(finished))
     print(f"study {study.study_name}: {len(finished)} trials done, running {remaining} more  (storage {STORAGE})")
@@ -74,16 +102,23 @@ def tune(family: str, subset: str = SUBSET, n_trials: int = 50, epochs: int = 50
                 raise optuna.TrialPruned()
 
         t0 = time.perf_counter()
-        with mlflow.start_run(run_name=f"trial_{trial.number:03d}", nested=True):
-            mlflow.log_params(trial.params)
-            try:
-                model.fit(X_tr, y_tr, X_va, y_va, verbose=False, trial_callback=report)
-            except optuna.TrialPruned:
-                mlflow.set_tag("state", "pruned")
-                raise
-            m = evaluate_validation(y_va, model.predict(X_va))
-            mlflow.log_metrics({f"val_{k}": v for k, v in m.items()})
-            mlflow.log_metrics({"best_epoch": model.history.best_epoch + 1, "fit_seconds": time.perf_counter() - t0})
+        run = mlflow.start_run(run_name=f"trial_{trial.number:03d}", nested=True)
+        mlflow.log_params(trial.params)
+        try:
+            model.fit(X_tr, y_tr, X_va, y_va, verbose=False, trial_callback=report)
+        except optuna.TrialPruned:
+            # pruning is intentional, not a failure: end the MLflow run as KILLED (an exception
+            # inside a `with start_run()` block would mark it FAILED)
+            mlflow.set_tag("state", "pruned")
+            mlflow.end_run(status="KILLED")
+            raise
+        except Exception:
+            mlflow.end_run(status="FAILED")
+            raise
+        m = evaluate_validation(y_va, model.predict(X_va))
+        mlflow.log_metrics({f"val_{k}": v for k, v in m.items()})
+        mlflow.log_metrics({"best_epoch": model.history.best_epoch + 1, "fit_seconds": time.perf_counter() - t0})
+        mlflow.end_run()
         trial.set_user_attr("best_epoch", model.history.best_epoch + 1)
         return m["rmse"]
 
@@ -98,7 +133,11 @@ def tune(family: str, subset: str = SUBSET, n_trials: int = 50, epochs: int = 50
         if remaining:
             study.optimize(objective, n_trials=remaining, callbacks=[log_trial])
         best = study.best_trial
-        best_params = {**best.params, "channels": TCN_CHANNELS[best.params["channels"]]} if family == "tcn" else dict(best.params)
+        best_params = dict(best.params)
+        if family == "tcn":
+            best_params["channels"] = TCN_CHANNELS[best.params["channels"]]
+        else:                                          # record the fixed direction in the config
+            best_params["bidirectional"] = family == "lstm_bi"
         mlflow.log_params({f"best_{k}": v for k, v in best.params.items()})
         mlflow.log_metric("best_val_rmse", best.value)
         from src.train_xgboost_optuna import plot_study
