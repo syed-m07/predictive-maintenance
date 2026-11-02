@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import json
 import time
-import warnings
 
 import mlflow
 import optuna
@@ -73,11 +72,10 @@ def make_objective(f_train, f_val, names):
 
 
 def plot_study(study: optuna.Study, prefix: str, n_startup: int = N_STARTUP_TRIALS) -> list:
-    """Optimisation history, hyperparameter importance, parallel coordinates -> results/.
+    """Optimisation history, hyperparameter importance, per-setting slice plot -> results/.
     Shared by the deep-model studies (src/deep_tuning.py)."""
     import matplotlib.pyplot as plt
     import numpy as np
-    from optuna.visualization.matplotlib import plot_parallel_coordinate
     from src.plotting import BLUE, MUTED, ORANGE, TEXT_SECONDARY
 
     apply_style()
@@ -94,7 +92,7 @@ def plot_study(study: optuna.Study, prefix: str, n_startup: int = N_STARTUP_TRIA
     ax.legend(loc="upper right"); fig.tight_layout()
     paths.append(RESULTS_DIR / f"{prefix}_history.png"); fig.savefig(paths[-1]); plt.close(fig)
 
-    if len(done) < 2:                       # importance / parallel plots need >= 2 finished trials
+    if len(done) < 2:                       # importance / slice plots need >= 2 finished trials
         return paths
     imp = optuna.importance.get_param_importances(
         study, evaluator=optuna.importance.FanovaImportanceEvaluator(seed=SEED))
@@ -105,11 +103,32 @@ def plot_study(study: optuna.Study, prefix: str, n_startup: int = N_STARTUP_TRIA
     ax.grid(axis="y", visible=False); fig.tight_layout()
     paths.append(RESULTS_DIR / f"{prefix}_param_importance.png"); fig.savefig(paths[-1]); plt.close(fig)
 
-    with warnings.catch_warnings():                    # optuna marks its matplotlib backend "experimental"
-        warnings.simplefilter("ignore", optuna.exceptions.ExperimentalWarning)
-        ax = plot_parallel_coordinate(study)
-    fig = ax.figure; fig.set_size_inches(12, 4.5); fig.tight_layout()
-    paths.append(RESULTS_DIR / f"{prefix}_parallel.png"); fig.savefig(paths[-1]); plt.close(fig)
+    # Slice plot: one panel per setting, validation RMSE vs that setting's value (a readable
+    # replacement for parallel coordinates). How to read: each dot is a trial; where the dots
+    # sit lowest is the good range for that setting; the orange dot is the best trial. The
+    # y-axis is cut at the 90th percentile so a few disastrous trials don't flatten the rest.
+    best = study.best_trial
+    params = [k for k in imp]                          # ordered by importance
+    ncol = min(4, len(params)); nrow = int(np.ceil(len(params) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3.1 * ncol, 2.6 * nrow), sharey=True, squeeze=False)
+    ytop = np.percentile(vals, 90)
+    for ax, p in zip(axes.flat, params):
+        xs = [t.params[p] for t in done]
+        ax.scatter(xs, vals, s=10, color=MUTED)
+        ax.scatter([best.params[p]], [best.value], s=40, color=ORANGE, zorder=3)
+        if isinstance(xs[0], str):
+            ax.tick_params(axis="x", rotation=30)
+        elif p in ("learning_rate", "lr"):
+            ax.set_xscale("log")
+        ax.set(title=f"{p}  ({imp[p]:.0%})", ylim=(vals.min() - 0.3, ytop))
+    for ax in axes.flat[len(params):]:
+        ax.axis("off")
+    for ax in axes[:, 0]:
+        ax.set_ylabel("validation RMSE")
+    fig.suptitle("Optuna: validation RMSE vs each setting (orange = best trial; % = importance)",
+                 x=0.01, ha="left", fontsize=11, fontweight="bold")
+    fig.tight_layout()
+    paths.append(RESULTS_DIR / f"{prefix}_slices.png"); fig.savefig(paths[-1]); plt.close(fig)
     return paths
 
 
