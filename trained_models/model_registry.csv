@@ -1,2 +1,3 @@
 model_name,version,subset,path,val_rmse,test_rmse,test_mae,test_r2,nasa_score,test_rmse_clip125,nasa_score_clip125,latency_single_ms,throughput_ms_per_item,train_time_s,mlflow_run_id,git_commit,created_at,notes
 xgboost_baseline,1,FD001,trained_models/xgboost_baseline_v1,15.1963,18.0505,13.0326,0.8113,681.17,16.8499,638.09,0.8708,0.01529,9.65,ba95f84830464d7c8a93fdaeed90ce8a,445a914,2026-11-01T20:32:13+00:00,
+xgboost_tuned,1,FD001,trained_models/xgboost_tuned_v1,14.8716,17.7603,12.7749,0.8173,671.29,16.5018,626.49,1.0998,0.02499,20.95,223c0e2c23b246a78343fd8b8a65a418,91a1b6c,2026-11-02T08:37:06+00:00,"optuna 101 trials, best trial #84"
