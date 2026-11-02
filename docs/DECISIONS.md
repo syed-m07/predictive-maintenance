@@ -73,6 +73,18 @@ Sources of truth, in order: this file → [`HANDOFF.md`](HANDOFF.md) → [`pm_pl
 | V5 | Validation metrics (every window of the 20 held-out engines, clipped labels) drive early stopping and Optuna. **Test metrics are computed once per final model, never used for tuning.** | Tuning on test would leak test information into model selection. The two aren't directly comparable: validation covers whole lifetimes, test one truncated point per engine. |
 | V6 | **Reference rows** on the FD001 test set (verified with the scorer): predict the training mean → RMSE 43.0, NASA 32,772; always predict 125 → RMSE 64.6, NASA 1,502,475; **perfect-but-capped-at-125 oracle → RMSE 3.74, NASA 14.6**. The mean predictor appears as a "no-skill" row in the comparison table. | Gives a "no skill" floor that real models must beat. It also **quantifies D9:** under the unclipped-truth convention, RMSE ≈ 3.7 is the best any clipped-label model can achieve. |
 
+## 3d. Deep-model decisions (Blocks 7–8)
+
+| # | Decision | Why |
+|---|---|---|
+| M1 | **One training loop and one model base for all deep models** (`src/models/utils.py`, `src/models/torch_base.py`, `src/train_sequence.py`). TCN, Bi-LSTM and uni-LSTM differ only in the network. | Identical optimiser, early stopping, clipping, scheduler, scoring and bundle format, so differences in results come from the architectures. The refactor was verified: the Colab TCN bundles still reproduce 16.6694 / 14.3022 exactly. |
+| M2 | Deep models train on **raw scaled 30×14 windows**, not the 238 engineered features. | The point of TCN/LSTM is to learn temporal patterns themselves; the engineered features belong to XGBoost. This is what the comparison measures. |
+| M3 | TCN = Bai et al. 2018 (weight-normed causal dilated convs + residuals). **Causality is tested and mutation-checked** (no chomp / chomp one step short both fail). | The chomp bug silently leaks future steps while training still "works". |
+| M4 | LSTM = `nn.LSTM` → **Bahdanau additive attention** over all 30 hidden states → head on [context, query]. The query = final hidden state (Bi-LSTM: forward state at the last step ⊕ backward state at the first step, which is tested). One class, a `bidirectional` flag (P7). | Attention gives the interpretability figure; one class makes the bi/uni comparison a single-variable ablation. |
+| M5 | Optuna for deep models: 50 trials, TPE (10 random startup), **MedianPruner**. Pruned trials end in MLflow as **KILLED** (with tag `state=pruned`), not FAILED. Fixed after the first TCN study showed 28 "FAILED" runs. | Pruning saves GPU time on hopeless settings; the status should say what happened. |
+| M6 | **Pruning warm-up: 5 epochs for TCN, 10 for the LSTMs.** | Measured on FD001: the Bi-LSTM sits on a plateau (val RMSE ≈ 40, i.e. predicting the mean) for ~3 epochs, then breaks through (40.1 at epoch 3 → 18.8 at epoch 6). A 5-epoch warm-up could prune slow-but-good LSTM trials. The TCN study (already run) used 5 and isn't affected. |
+| M7 | LSTM search space (planner w6t7): hidden 64/128/192/256, layers 1–3, dropout 0.1–0.5, lr 1e-4–1e-2 (log). **Identical for both variants.** | A fair ablation needs the same search budget and space. |
+
 ## 4. Corrections to the original plan (not shortcuts: the original was wrong)
 
 Full list in HANDOFF.md §7; all applied to planner v4.
