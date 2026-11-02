@@ -43,4 +43,18 @@ Impact: final models see 80% of the training engines. Absolute test scores may
   fairer. Applies to all model families.
 
 --------------------------------------------------------------------------------
+[DV-003] 2026-11-02 | APPROVED
+What: ROCKET's ridge-penalty grid is np.logspace(-3, 6, 10) instead of the
+  planner's np.logspace(-3, 3, 10). The penalty is chosen on the 20 validation
+  engines (DECISIONS K2), not by RidgeCV's leave-one-out.
+Original plan: planner w7t3 / HANDOFF: "RidgeCV(alphas=np.logspace(-3,3,10))".
+Why: measured on FD001 with 10,000 kernels: validation RMSE fell at every
+  step up to the largest planner value (alpha 1e-3: 20.80 ... alpha 1e3: 18.91),
+  so the best alpha lay outside the grid. Keeping the grid would under-rate ROCKET.
+  Rule agreed with the owner: if the best alpha is still on the new edge, stop and
+  report instead of widening again.
+Impact: ROCKET is evaluated at a properly chosen penalty. Same number of grid
+  points; ridge time is unchanged.
+
+--------------------------------------------------------------------------------
 (no open proposals)

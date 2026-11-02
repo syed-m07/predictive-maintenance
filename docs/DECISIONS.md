@@ -85,6 +85,16 @@ Sources of truth, in order: this file → [`HANDOFF.md`](HANDOFF.md) → [`pm_pl
 | M6 | **Pruning warm-up: 5 epochs for TCN, 10 for the LSTMs.** | Measured on FD001: the Bi-LSTM sits on a plateau (val RMSE ≈ 40, i.e. predicting the mean) for ~3 epochs, then breaks through (40.1 at epoch 3 → 18.8 at epoch 6). A 5-epoch warm-up could prune slow-but-good LSTM trials. The TCN study (already run) used 5 and isn't affected. |
 | M7 | LSTM search space (planner w6t7): hidden 64/128/192/256, layers 1–3, dropout 0.1–0.5, lr 1e-4–1e-2 (log). **Identical for both variants.** | A fair ablation needs the same search budget and space. |
 
+## 3e. ROCKET decisions (Block 9)
+
+| # | Decision | Why |
+|---|---|---|
+| K1 | ROCKET = sktime 1.2.0 `MiniRocketMultivariate` (10,000 kernels → 9,996 PPV features, `random_state=42`) on the **same 30×14 windows** as the deep models (transposed to sktime's `(n, 14, 30)`), then a **ridge regression** on the standardised features. API checked against the installed version first (planner w7t3). | Same input as TCN/LSTM, so the comparison isolates the model. MiniRocket is the fast, deterministic successor of ROCKET (Dempster et al. 2021) and sktime's recommended variant. |
+| K2 | **Ridge penalty chosen on the 20 validation engines**, not with `RidgeCV`'s default leave-one-out over training windows. | Neighbouring windows of one engine overlap by 29 of 30 cycles, so leave-one-window-out leaks the left-out window's neighbours and favours too little regularisation. Using the validation engines matches how every other model is selected (early stopping / Optuna). |
+| K3 | **Alpha grid widened from the planner's `logspace(-3, 3, 10)` to `logspace(-3, 6, 10)`** (one value per decade). **Approved by the owner, 2026-11-02 (DV-003).** | Measured: with the planner grid, validation RMSE fell monotonically to the largest value (α=10⁻³: 20.80 → α=10³: 18.91), so the best α was outside the grid and ROCKET would be under-rated. With ~10,000 features and ~14,000 highly correlated windows, strong regularisation is expected. |
+| K4 | Ridge solved by hand: `XᵀX` formed once, one Cholesky solve per α (`ridge_path`, unit-tested against sklearn `Ridge`). Coefficients stored as plain numbers (`ridge.npz`); only the MiniRocket transformer uses joblib. | A prototype with one sklearn `Ridge` fit per α had not finished after ~20 min on the 4-core laptop; an eigendecomposition of XᵀX alone took 220 s. The Cholesky path is ~10× cheaper. npz cannot execute code on load, unlike pickle. |
+| K5 | No Optuna study for ROCKET. Training time is reported in two parts: transform and ridge/α search. | Its only real hyperparameter (α) is searched exhaustively in fit. The HANDOFF says "log training time, it's the story"; separating the parts shows where the time goes. |
+
 ## 4. Corrections to the original plan (not shortcuts: the original was wrong)
 
 Full list in HANDOFF.md §7; all applied to planner v4.
